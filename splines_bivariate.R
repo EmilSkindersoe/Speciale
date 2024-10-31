@@ -1,6 +1,7 @@
 setwd("~/Universitet-mat/.Speciale/R")
 source("splines_source1.R")
 library(gridExtra)
+library(splines)
 library(pracma)
 #We will use simpson2d() for the integration here
 library(fastmatrix)
@@ -59,7 +60,7 @@ impute_zeros <- function(counts) {
       }
       # Else, leave it as zero for now
     }
-    counts <- counts_new/sum(counts_new)
+    counts <- counts_new
   }
   return(counts)
 }
@@ -85,7 +86,7 @@ trapz2d <- function(x, y, f) {
 }
 
 #Denne funktion mangler mulighed for selv at finde knots og mulighed for at specificere antal bins
-bivariate<-function(x,y=NULL,alfa=0.5,rho=NULL,bin_selection=doane,knots_x_inner=NULL,knots_y_inner=NULL,k=3,l=3,u=2,v=2,res=200){
+bivariate<-function(x,y=NULL,alfa=0.5,rho=NULL,bin_selection=doane,knots_x_inner,knots_y_inner,k=3,l=3,u=2,v=2,res=200){
   if(is.null(rho)){
     rho=(1-alfa)/alfa
   }
@@ -101,8 +102,16 @@ bivariate<-function(x,y=NULL,alfa=0.5,rho=NULL,bin_selection=doane,knots_x_inner
     }
     F_mat<-CLR(hist_data)
   } else if (class(x)=="numeric" & class(y)=="numeric"){ #Converts to histogram data
-    m<-bin_selection(x)
-    n<-bin_selection(y)
+    
+    if(class(bin_selection)=="function"){
+      m<-bin_selection(x)
+      n<-bin_selection(y)
+    }
+    if(class(bin_selection)=="numeric"){
+      m<-bin_selection[1]
+      n<-bin_selection[2]
+    }
+    
     breaks_x<-seq(min(x),max(x),length.out=m+1)
     breaks_y<-seq(min(y),max(y),length.out=n+1)
     levels_x <- 1:m
@@ -121,7 +130,7 @@ bivariate<-function(x,y=NULL,alfa=0.5,rho=NULL,bin_selection=doane,knots_x_inner
     
     # Counts
     counts <- table(x_bins_factor, y_bins_factor)
-    counts<-matrix(counts,nrow=m,ncol=n)/sum(counts)
+    counts<-matrix(counts,nrow=m,ncol=n)
     
     #Impute the counts
     hist_data<-impute_zeros(counts)
@@ -131,6 +140,7 @@ bivariate<-function(x,y=NULL,alfa=0.5,rho=NULL,bin_selection=doane,knots_x_inner
   
   #We make the knot sequence
   #We start with assuming that the inner knots are provided
+  #Actually there is too much numeric instability if they are not suitable provided up front
   
   g<-length(knots_x_inner)-2
   h<-length(knots_y_inner)-2
@@ -279,11 +289,15 @@ bivariate<-function(x,y=NULL,alfa=0.5,rho=NULL,bin_selection=doane,knots_x_inner
   
   #Hmm G er ikke lige invertibel :(
   coefficients<-solve(G)%*%bbZ_bar%*%as.vector(F_mat)
-  Z_opt<-matrix(coefficients[1:((g+k)*(h+l))],nrow=k+g,ncol=l+h)
+  Z_opt<-matrix(coefficients[1:((g+k)*(h+l))],nrow=k+g,ncol=l+h) #The weird indexing is to extract the correct information for creating R_opt
   v_opt<-coefficients[((g+k)*(h+l)+1):((g+k)*(h+l)+k+g)]
   u_opt<-coefficients[((g+k)*(h+l)+k+g+1):((g+k)*(h+l)+k+g+h+l)]
-  # R_opt<-rbind(Z_opt,t(u_opt))
-  # R_opt<-cbind(R_opt,c(v_opt,0))
+  #This is unnecessary for all but creating
+  R_opt<-rbind(Z_opt,t(u_opt))
+  R_opt<-cbind(R_opt,c(v_opt,0))
+  spline_hist<-t(Z_x_bar)%*%R_opt%*%Z_y_bar
+  
+  
   # spline_opt<-t(Z_x_bar_seq)%*%R_opt%*%Z_y_bar_seq
   spline_int<- Z_x_seq%*%Z_opt%*%t(Z_y_seq)
   spline_x<-Z_x_seq%*%v_opt
@@ -305,6 +319,8 @@ bivariate<-function(x,y=NULL,alfa=0.5,rho=NULL,bin_selection=doane,knots_x_inner
   C_spline_int<-exp(spline_int)
   C_spline_int<-C_spline_int/trapz2d(seq_x,seq_y,C_spline_int)
   
+  
+  
   structure(list("Z_spline"=spline_opt,
                  "Z_spline_int"=spline_int,
                  "Z_spline_ind"=spline_ind,
@@ -316,20 +332,18 @@ bivariate<-function(x,y=NULL,alfa=0.5,rho=NULL,bin_selection=doane,knots_x_inner
                  "seq_x"=seq_x,"seq_y"=seq_y,
                  "midpoints_x"=midpoints_x,"midpoints_y"=midpoints_y,
                  "F_mat"=F_mat,"hist_data"=hist_data,
+                 "R_opt"=R_opt,"Z_opt"=Z_opt,"v_opt"=v_opt,"u_opt"=u_opt,
+                 "Z_x_bar"=Z_x_bar,"Z_y_bar"=Z_y_bar,"bbZ_bar"=bbZ_bar,"G"=G,"spline_hist"=spline_hist,
                  "rho"=rho,"alfa"=alfa,
                  "sd"=simp_d,"rsd"=rel_simp_d),class="bivariate_zbSpline")
 }
 
-
-
-
-
-plot.bivariate_zbSpline<-function(Z,type="static",what="full",scale="clr",plot_hist=FALSE){
+plot.bivariate_zbSpline<-function(Z,type="static",what="full",scale="clr",title="",plot_hist=FALSE){
   #type can be static or interactive
   #What can be either full, independent, interaction or geometric marginals
   #plot_hist is whether we plot the underlying histogram
   #scale chooses between the clr transform or the density
-  if(type=="static"){ #Here we use the persp3D function
+
     #We can update all of these to finding a response and range based on the if statements
     if(what=="full"){
       if(scale=="clr"){
@@ -357,6 +371,7 @@ plot.bivariate_zbSpline<-function(Z,type="static",what="full",scale="clr",plot_h
     }
     range<-c(min(outcome)-0.5,max(outcome)+0.5)
     
+    if(type=="static"){ #Here we use the persp3D function
       persp3D(
         x = Z$seq_x, 
         y = Z$seq_y, 
@@ -370,9 +385,11 @@ plot.bivariate_zbSpline<-function(Z,type="static",what="full",scale="clr",plot_h
         xlab = "",          
         ylab = "",          
         zlab = "",          
-        bty = "b2"          
+        bty = "b2",
+        colkey=F,
+        main=title,
+        cex.axis=0.5
       )
-    
     if(plot_hist){
       if(scale=="clr"){
         hist_response<-Z$F_mat
@@ -380,9 +397,10 @@ plot.bivariate_zbSpline<-function(Z,type="static",what="full",scale="clr",plot_h
       if(scale=="density"){
         hist_response<-Z$hist_data/trapz2d(Z$midpoints_x,Z$midpoints_y,Z$hist_data)
       }
+      grid<-expand.grid("x"=Z$midpoints_x,"y"=Z$midpoints_y)
       points3D(
-        x = rep(Z$midpoints_x, each = length(Z$midpoints_y)),   # Repeat x for each y value
-        y = rep(Z$midpoints_y, times = length(Z$midpoints_x)),   # Repeat y for each x value
+        x = grid$x,   # Repeat x for each y value
+        y = grid$y,   # Repeat y for each x value
         z = as.vector(hist_response),                # Flatten z matrix to match x and y
         add = TRUE,
         col = "black",
@@ -390,11 +408,48 @@ plot.bivariate_zbSpline<-function(Z,type="static",what="full",scale="clr",plot_h
         cex = 0.5
       )
     }
-  }
+    }
+    if(type=="interactive"){
+      p<-plot_ly()
+      p<- p%>%add_surface(x=Z$seq_x,y=Z$seq_y,z=outcome)
+
+      if(plot_hist){
+        if(scale=="clr"){
+          hist_response<-Z$F_mat
+        }
+        if(scale=="density"){
+          hist_response<-Z$hist_data/trapz2d(Z$midpoints_x,Z$midpoints_y,Z$hist_data)
+        }
+        grid<-expand.grid("x"=Z$midpoints_x,"y"=Z$midpoints_y)
+        p<-p%>% add_markers(x = grid$x,
+        y = grid$y,
+        z = as.vector(hist_response),marker=list(size=3,color="black"))
+      }
+      p
+    }
 }
 
-#We still need a cross_validate function and a bivariate_cbSpline
 
+#We still need a cross_validate function
+
+cross_validate2d<-function(x,y=NULL,alfa_seq=seq(0.01,0.99,length.out=20),res=100,k=2,l=2,u=1,v=1,knots_x_inner,knots_y_inner,bin_selection=doane){
+  cv<-numeric(length(alfa))
+  Z_temp<-bivariate(x,y,alfa=0.5,bin_selection=bin_selection,knots_x_inner=knots_x_inner,knots_y_inner=knots_y_inner,k=k,l=l,u=u,v=v,res=5)
+  csR<-as.vector(Z_temp$R_opt)
+  csZ<-c(as.vector(Z_temp$Z_opt),Z_temp$v_opt,Z_temp$u_opt)
+  P<-matrix(0,nrow=length(csR),ncol=length(csZ))#We make the permutation matrix
+  for(i in 1:nrow(P)){
+    sigma_i<-which(csZ==csR[i])
+    P[i,sigma_i]<-1
+  }
+  for(i in seq_along(alfa_seq)){
+  Z<-bivariate(x,y,alfa_seq[i],knots_x_inner=knots_x_inner,knots_y_inner=knots_y_inner,bin_selection=bin_selection,k=k,l=l,u=u,v=v,res=res)
+  H<-kronecker(t(Z$Z_y_bar),t(Z$Z_x_bar))%*%P%*%solve(Z$G)%*%Z$bbZ_bar
+  m<-length(midpoints_x)
+  n<-length(midpoints_y)
+  cv[i]<-mean((Z$F_mat-Z$spline_hist)^2)/((1-sum(diag(H))/(m*n))^2)
+  }
+}
 
 # plot(Z2D,what="full",plot_hist=TRUE)
 # 

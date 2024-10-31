@@ -186,15 +186,15 @@ knots_x_inner<-c(0,0.25,0.5,0.75,1)->knots_y_inner
 
 hist3D(midpoints_x,midpoints_y,counts/(sum(counts)*0.1*0.1))
 
-Z2D<-bivariate(list_data,rho=0.001,knots_x_inner=knots_x_inner,knots_y_inner=knots_y_inner,k=2,l=2,u=1,v=1,res=50)
-Z2D$rsd
-plot(Z2D,what="full",scale="density",plot_hist=TRUE)
+Z2D<-bivariate(x,y,rho=0.001,bin_selection=c(10,10),knots_x_inner=knots_x_inner,knots_y_inner=knots_y_inner,k=2,l=2,u=1,v=1,res=50)
+
+plot(Z2D,what="full",scale="density",plot_hist=TRUE,type="interactive")
 
 
 simpson2d(f,0.001,0.99,0.001,0.99)
 x_vals <- seq(0.01, 0.99, length.out = 50)
 y_vals <- seq(0.01, 0.99, length.out = 50)
 z_vals <- outer(x_vals, y_vals, function(x, y) f(x, y))
-plot_ly(x=x_vals,y=y_vals,z=z_vals,type="surface")
+
 
 
