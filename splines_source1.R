@@ -70,12 +70,13 @@ czm<-function(x){ #Impute 0-entries of histogram
   return(x/sum(x))
 }
 
-zbSpline<-function(x,alfa=0.5,l=2,degree=3,bin_selection=doane,knots_inner=NULL,res=1000){ #Kan udvides til at have støj med i form af weights
+zbSpline<-function(x,alfa=0.5,l=2,degree=3,bin_selection=doane,knots_inner=NULL,knots_full=NULL,res=1000){ #Kan udvides til at have støj med i form af weights
   #Kan også udvides til at x kan være en dataframe med histogram data
   #Skal skrives lidt om så histogrammernes mid-points of knots ikke nødvendigvis er ens
   #knots is without anchor knots
   #If x is a data.frame/histogram data, it must have column one of bin points and column y of bin values
   #Kan også udvides til at angive z-koefficienterne eller udregne de optimale.
+  #knots_full kan angives hvis vi ikke vil have ens anchor knots
   options(warnPartialMatchArgs = TRUE)
   
   if(res<10){warning("Resolutions lower than 10 are likely to give numerical inaccuracies")}
@@ -103,14 +104,20 @@ zbSpline<-function(x,alfa=0.5,l=2,degree=3,bin_selection=doane,knots_inner=NULL,
     bins_new<-x[,2]
   } else stop("Error: x must be numeric or data frame")
   
-  if (class(knots_inner) == "numeric") { 
-    # If knots are supplied and are numeric
-    g <- length(knots_inner) - 2
-    knots <- c(rep(knots_inner[1], degree), knots_inner, rep(knots_inner[length(knots_inner)],degree))
-  } else if(is.null(knots_inner)){ #Then we have no better option than to make knots in the histogram bins
-    g<-n_bins
-    knots<- c(rep(bin_points[1],degree),seq(bin_points[1],bin_points[n_bins],length.out=g+2),rep(bin_points[n_bins],degree))
-  } else stop("Error: If knots are not supplied, they must be numeric")
+  if(is.null(knots_full)){
+    if (class(knots_inner) == "numeric") { 
+      # If knots are supplied and are numeric
+      g <- length(knots_inner) - 2
+      knots <- c(rep(knots_inner[1], degree), knots_inner, rep(knots_inner[length(knots_inner)],degree))
+    } else if(is.null(knots_inner)){ #Then we have no better option than to make knots in the histogram bins
+      g<-n_bins
+      knots<- c(rep(bin_points[1],degree),seq(bin_points[1],bin_points[n_bins],length.out=g+2),rep(bin_points[n_bins],degree))
+    } else stop("Error: If knots are supplied, they must be numeric")
+  } else if(class(knots_full)=="numeric"){
+    knots<-knots_full
+    g<-length(knots)-2-2*degree 
+  }
+
   
   a<-min(knots); b<-max(knots)
   x_seq<-seq(a,b,length.out=res) #Need this for evaluating M, where higher res gives higher accuracy
@@ -134,7 +141,7 @@ zbSpline<-function(x,alfa=0.5,l=2,degree=3,bin_selection=doane,knots_inner=NULL,
   }
   
   # Generate matrix Sl
-  if(l==0){ Sl<-diag(1,g+k+1)}
+  if(l==0){ Sl<-diag(1,g+degree+1)}
   Sl <- Dj(1) %*% Lj(1)
   if (l > 1) for (i in 2:l) Sl <- Dj(i) %*% Lj(i) %*% Sl
 
@@ -194,11 +201,13 @@ zbSpline<-function(x,alfa=0.5,l=2,degree=3,bin_selection=doane,knots_inner=NULL,
   
   H<- alfa*B%*%U%*%G_inv%*%t(U)%*%t(B)
   
-  structure(list("Z_basis"=Z,"z_coef"=z_coef,"Z_spline"=Z%*%z_coef,"U"=U,"knots"=knots,"x"=x,"H"=H,"x_seq"=x_seq,"bin_points"=bin_points,"bin_values"=bins_new,"degree"=degree,"g"=g),class="zbSpline")
+  structure(list("Z_basis"=Z,"z_coef"=z_coef,"Z_spline"=Z%*%z_coef,
+                 "U"=U,"H"=H,"M"=M,"Sl"=Sl,"K"=K,"knots"=knots,"x"=x,"x_seq"=x_seq,
+                 "bin_points"=bin_points,"bin_values"=bins_new,"degree"=degree,"g"=g,"alfa"=alfa),class="zbSpline")
 }
 
 plot.zbSpline<-function(Z,what="basis",include_knots=TRUE,include_hist=TRUE){
-  if(what=="basis"){
+  if(what=="Z-basis"){
     Z_df<-as.data.frame(Z$Z_basis)
     Z_df[Z_df == 0] <- NA
   }
@@ -209,7 +218,7 @@ plot.zbSpline<-function(Z,what="basis",include_knots=TRUE,include_hist=TRUE){
   else if(what=="C-basis"){
     Z_df<-as.data.frame(Z$C_basis)
   }
-  else if(what=="spline"){
+  else if(what=="Z-spline"){
     Z_df<-as.data.frame(Z$Z_spline)
   }
   else if(what=="O-spline"){
@@ -221,7 +230,8 @@ plot.zbSpline<-function(Z,what="basis",include_knots=TRUE,include_hist=TRUE){
     x_seq<-Z$x_seq
     Z_df$x<-x_seq
     Z_long<-pivot_longer(Z_df,cols = -x, names_to = "basis", values_to = "value")
-    rep_points<-data.frame("x"=Z$bin_points,"y"=Z$bin_values/(trapz(Z$bin_points,Z$bin_values)))
+    rep_points<-data.frame("x"=Z$bin_points,"y"=Z$bin_values/(trapz(Z$bin_points,Z$bin_values))) #y is divided with the integral to have it at probability scale
+    #alternatively we could use bin_width when normalising
     p<-ggplot() +
              geom_line(Z_long,mapping=aes(x=x, y=value, color=basis)) +
              theme_minimal() +
@@ -234,6 +244,9 @@ plot.zbSpline<-function(Z,what="basis",include_knots=TRUE,include_hist=TRUE){
   }
   if(include_hist==TRUE & what=="C-spline"){
     p<-p+geom_point(data=rep_points,mapping=aes(x=x,y=y),shape=8,color="blue")
+  }
+  if(what=="C-basis"){
+    p<-p+ylim(0,max(Z_long$value))
   }
   return(p)
 }
@@ -285,21 +298,28 @@ orthogonalise<-function(Z,dec="Cholesky"){
   Z_list$O<-O
   Z_list$Phi<-Phi
   structure(Z_list,class="zbSpline")
-}
+} #I reuse the optimal coefficients from another basis, but can't really figure out
+#how to optimise when the basis is orthogonal.
 
 cbSpline<-function(Z,what="original"){
  if(what=="original"){
-   zeta<-exp(Z$Z_basis)
+   zeta<-exp(Z$Z_basis) #We transform the basis
+   for(i in 1:ncol(zeta)){
+     zeta[,i]<-zeta[,i]/trapz(Z$x_seq,zeta[,i]) #Normalise
+   }
  } else if(what=="orthogonal"){
    zeta<-exp(Z$O)
+   for(i in 1:ncol(zeta)){
+     zeta[,i]<-zeta[,i]/trapz(Z$x_seq,zeta[,i])
+   }
  } else(stop("Error: ZB-splines must be either original or orthogonal"))
-  z<-Z$z_coef
+  z<-Z$z_coef #Extract the coefficients
   terms=matrix(NA,nrow=nrow(zeta),ncol=ncol(zeta))
-  for(i in 1:ncol(zeta)){
-    terms[,i]<-zeta[,i]^z[i]
+  for(i in 1:ncol(zeta)){ #Create all of the terms for the spline composition
+    terms[,i]<-zeta[,i]^z[i] #Perform powering on the terms
   }
   xi<-terms[,1]
-  for (i in 2:ncol(zeta)){
+  for (i in 2:ncol(zeta)){ #And combine them with perturbation
     xi<-xi*terms[,i]
   }
   xi<-xi/trapz(Z$x_seq,xi)
