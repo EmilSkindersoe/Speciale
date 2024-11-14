@@ -1,0 +1,181 @@
+source("~/Universitet-mat/.Speciale/R/splines_source1.R")
+source("~/Universitet-mat/.Speciale/R/splines_bivariate.R")
+library(readxl)
+ice_ages<-read_excel("Rasmussen_et_al_2014_QSR_Table_2.xlsx",range = "A22:E139")[-(1:8),]
+#GS is cold and GI is milder
+
+
+ice_cores<-read_excel("GICC05modelext_GRIP_and_GISP2_and_resampled_data_series_Seierstad_et_al._2014_version_10Dec2014-2.xlsx", 
+                sheet = "3) d18O and Ca 20 yrs mean", 
+                range = "A51:M12500")[-1,]
+
+ngrip2<-na.omit(as.data.frame(lapply(ice_cores[,c(1,5:6)],as.numeric),col.names = c("age","d18O","Ca2")))
+grip<-na.omit(as.data.frame(lapply(ice_cores[,c(1,8:9)],as.numeric),col.names = c("age","d18O","Ca2")))
+gisp<-na.omit(as.data.frame(lapply(ice_cores[,c(1,11:12)],as.numeric),col.names = c("age","d18O","Ca2")))
+ngrip2$Ca2<-log(ngrip2$Ca2)
+grip$Ca2<-log(grip$Ca2)
+gisp$Ca2<-log(gisp$Ca2)
+
+
+#We will be working only in the pre-holoscene period
+process_ice_age_data <- function(data) {
+  combined<-data %>%
+    mutate(
+      # Generalize period labels by capturing only the main part (e.g., GI-1, GS-2)
+      Event = sub("^(Start of [A-Z]+-\\d+).*", "\\1", Event)
+    ) %>%
+    # Select only the Age column and the simplified Event column
+    select(age = `Age (a b2k)`, period = Event)
+  aggr<-aggregate(age ~ period, data = combined, FUN = min)
+  return(aggr[order(aggr$age),])
+}
+ice_age_proc<-process_ice_age_data(ice_ages)
+
+
+split_ice<-function(ice_ages,data){
+  ice_times<-ice_ages$age
+  periods<-ice_ages$period
+  subsets_list<-list()
+  j<-1
+  for(i in 2:length(ice_times)){
+    interval<-c(ice_times[i-1],ice_times[i])
+    sub_data<-subset(data,age>interval[1]&age<interval[2])
+    if(!nrow(sub_data)==0){
+      subsets_list[[j]]<-sub_data
+      names(subsets_list)[j]<-periods[i-1]
+      j<-j+1
+    }
+  }
+  return(subsets_list)
+}
+
+ngrip2_list<-split_ice(ice_age_proc,ngrip2)
+grip_list<-split_ice(ice_age_proc,grip)
+gisp_list<-split_ice(ice_age_proc,gisp)
+
+#We cross-validate over all observations from all cores
+#x<-c(ngrip2$d18O,grip$d18O,gisp$d18O)
+#y<-c(ngrip2$Ca2,grip$Ca2,gisp$Ca2)
+x<-c(ngrip2$d18O)
+y<-c(ngrip2$Ca2)
+
+kx<-seq(min(x),max(x),length.out=4)
+ky<-seq(min(y),max(y),length.out=4)
+
+#cross<-cross_validate2d(x,y,knots_x_inner=kx,knots_y_inner=ky,bin_selection=doane,k=3,l=3,u=1,v=1)
+#plot(cross)
+#cross$optimum
+
+biv_full<-bivariate(x,y,alfa=0.11,knots_x_inner=kx,knots_y_inner=ky,k=3,l=3,u=1,v=1)
+plot(biv_full,scale="density",plot_hist=TRUE,type="static",title="density function of all cores and all observations",xlab="δ18O",ylab="[Ca2+]")
+
+par(mfrow=c(3,2),mar=c(0,0,1,0))
+
+plot(biv_full,what="full",scale="clr",plot_hist=TRUE,type="static",title="clr full",,xlab="δ18O",ylab="[Ca2+]")
+plot(biv_full,what="full",scale="density",plot_hist=TRUE,type="static",title="density full",,xlab="δ18O",ylab="[Ca2+]")
+plot(biv_full,what="independent",scale="clr",type="static","clr independent",xlab="δ18O",ylab="[Ca2+]")
+plot(biv_full,what="independent",scale="density",type="static","density independent",,xlab="δ18O",ylab="[Ca2+]")
+plot(biv_full,what="interaction",scale="clr",type="static","clr interaction",xlab="δ18O",ylab="[Ca2+]")
+plot(biv_full,what="interaction",scale="density",type="static","density interaction",xlab="δ18O",ylab="[Ca2+]")
+biv_full$rsd
+
+
+
+
+x<-ngrip2_list[[2]]$d18O #Even numbers are mild periods, odds are ice ages
+y<-ngrip2_list[[2]]$Ca2
+kx<-seq(min(x),max(x),length.out=4)
+ky<-seq(min(y),max(y),length.out=4)
+#cross<-cross_validate2d(x,y,knots_x_inner=kx,knots_y_inner=ky,bin_selection=doane)
+#plot(cross)
+#Det kunne godt være at vi skal medtage en periode kun hvis dens histogramdata faktisk kan fittes
+#Og vi skal måske finde et optimalt alpha til istider og varmeperioder
+
+par(mfrow=c(1,1))
+biv_mild<-bivariate(x,y,knots_x_inner = kx,knots_y_inner=ky,bin_selection=doane,alfa=0.11,k=3,l=3,u=1,v=1)
+plot(biv_mild,scale="density",what="full",type="static",plot_hist=FALSE,title="density function during mild period (GI-1, NGRIP2)",xlab="δ18O",ylab="[Ca2+]")
+
+
+
+ngrip_ice<-do.call(rbind,ngrip2_list[seq(1,length(ngrip2_list),by=2)])
+x<-ngrip2_list[[3]]$d18O #Even numbers are mild periods, odds are ice ages
+y<-ngrip2_list[[3]]$Ca2
+kx<-seq(min(x),max(x),length.out=4)
+ky<-seq(min(y),max(y),length.out=4)
+#cross<-cross_validate2d(x,y,knots_x_inner=kx,knots_y_inner=ky,bin_selection=doane)
+#plot(cross)
+
+biv_ice<-bivariate(x,y,knots_x_inner = kx,knots_y_inner=ky,bin_selection=doane,alfa=0.11,k=3,l=3,u=1,v=1)
+plot(biv_ice,scale="density",what="full",type="static",plot_hist=FALSE,title="density function during cold period (GS-2, NGRIP2)",xlab="δ18O",ylab="[Ca2+]")
+#The distributions during different ages are rather dissimilar, so it would be unfair to show samples
+
+ngrip2_rsd<-data.frame("rsd"=rep(NA,length(ngrip2_list)),"period"=rep(c("cold","mild"),length.out=length(ngrip2_list)))
+grip_rsd<-data.frame("rsd"=rep(NA,length(grip_list)),"period"=rep(c("cold","mild"),length.out=length(grip_list)))
+gisp_rsd<-data.frame("rsd"=rep(NA,length(gisp_list)),"period"=rep(c("cold","mild"),length.out=length(gisp_list)))
+
+fill_rsd<-function(list){
+  ice_rsd<-data.frame("rsd"=NA,"period"=rep(c("cold","mild"),length.out=length(list)))
+  for(i in 1:nrow(ice_rsd)){
+    x<-list[[i]]$d18O
+    y<-list[[i]]$Ca2
+    kx<-seq(min(x),max(x),length.out=4)
+    ky<-seq(min(y),max(y),length.out=4)
+    dens <- tryCatch({
+      bivariate(x, y, alfa = 0.1, bin_selection = doane, knots_x_inner = kx, 
+                knots_y_inner = ky, k = 3, l = 3, u = 1, v = 1)
+    }, error = function(e) {
+      message("Skipping iteration ", i, " due to error: ", conditionMessage(e))
+      NULL # Return NULL if there's an error
+    })
+    
+    # Only assign if dens was successfully computed
+    if (!is.null(dens)) {
+      ice_rsd$rsd[i] <- dens$rsd
+    }
+  }
+  return(ice_rsd)
+}
+ngrip2_box<-fill_rsd(ngrip2_list)
+ngrip2_box$source="NGRIP2"
+grip_box<-fill_rsd(grip_list)
+grip_box$source="GRIP"
+gisp_box<-fill_rsd(gisp_list)
+gisp_box$source="GISP"
+
+combined_box<-rbind(ngrip2_box,grip_box,gisp_box)
+combined_box$source=factor(combined_box$source,levels=c("NGRIP2","GRIP","GISP"))
+ggplot(combined_box, aes(x = period, y = rsd, fill = period)) +
+  geom_boxplot() +
+  facet_wrap(~ source) +
+  labs(title = "Distribution of RSD for Cold and Mild Periods",
+       x = "Period", y = "RSD") +
+  theme_minimal()+
+  ylim(c(0,1))
+
+t.test(subset(combined_box,period=="cold")$rsd,subset(combined_box,period=="mild")$rsd)
+
+#We aggregate all cold periods and all mild periods and get p-values for H0 in each
+
+ngrip2_ice<-do.call(rbind,ngrip2_list[seq(1,length(ngrip2_list),by=2)])
+grip_ice<-do.call(rbind,grip_list[seq(1,length(ngrip2_list),by=2)])
+gisp_ice<-do.call(rbind,gisp_list[seq(1,length(ngrip2_list),by=2)])
+ice_sim<-rbind(ngrip2_ice,grip_ice,gisp_ice)
+x<-ice_sim$d18O
+y<-ice_sim$Ca2
+kx<-seq(min(x),max(x),length.out=4)
+ky<-seq(min(y),max(y),length.out=4)
+p_ice<-perm_test(x,y,kx=kx,ky=ky,alfa=0.1,k=3,l=3,u=1,v=1,K=1000)
+p_ice
+
+ngrip2_mild<-do.call(rbind,ngrip2_list[seq(2,length(ngrip2_list),by=2)])
+grip_mild<-do.call(rbind,grip_list[seq(2,length(ngrip2_list),by=2)])
+gisp_mild<-do.call(rbind,gisp_list[seq(2,length(ngrip2_list),by=2)])
+mild_sim<-rbind(ngrip2_mild,grip_mild,gisp_mild)
+x<-mild_sim$d18O
+y<-mild_sim$Ca2
+kx<-seq(min(x),max(x),length.out=4)
+ky<-seq(min(y),max(y),length.out=4)
+p_mild<-perm_test(x,y,kx=kx,ky=ky,alfa=0.1,k=3,l=3,u=1,v=1,K=1000)
+p_mild
+
+dhsic.test(x,y,method="gamma")

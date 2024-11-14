@@ -85,6 +85,15 @@ trapz2d <- function(x, y, f) {
   return(integral)
 }
 
+clr2d<-function(f,x,y){
+  f_vals<-log(outer(x,y,FUN=f))
+  int<-trapz2d(x,y,f_vals)
+  clr2_function<-function(x,y){
+    log(f(x,y))-int
+  }
+  return(clr2_function)
+}
+
 #Denne funktion mangler mulighed for selv at finde knots og mulighed for at specificere antal bins
 bivariate<-function(x,y=NULL,alfa=0.5,rho=NULL,bin_selection=doane,knots_x_inner,knots_y_inner,k=3,l=3,u=2,v=2,res=200){
   if(is.null(rho)){
@@ -129,7 +138,7 @@ bivariate<-function(x,y=NULL,alfa=0.5,rho=NULL,bin_selection=doane,knots_x_inner
     y_bins_factor <- factor(y_bins, levels = levels_y)
     
     # Counts
-    counts <- table(x_bins_factor, y_bins_factor)
+    counts <- table(x_bins_factor, y_bins_factor) #So each row is an observation from x
     counts<-matrix(counts,nrow=m,ncol=n)
     
     #Impute the counts
@@ -245,7 +254,7 @@ bivariate<-function(x,y=NULL,alfa=0.5,rho=NULL,bin_selection=doane,knots_x_inner
     return(L_empty)
   }
   # Generate matrix Sv
-  if(v==0){ Sv<-diag(1,h+l+1)}
+  if(v==0){ Sv<-diag(1,h+l+1)} #This seems to not be the way to go
   Sv <- Dj_y(1) %*% Lj_y(1)
   if (v > 1) for (i in 2:v) Sv <- Dj_y(i) %*% Lj_y(i) %*% Sv
   
@@ -312,13 +321,17 @@ bivariate<-function(x,y=NULL,alfa=0.5,rho=NULL,bin_selection=doane,knots_x_inner
   
   
   #And we map it back to density
+  #This should be done via the B^2 basis functions, but I won't focus too much on it
   C_spline<-exp(spline_opt)
   C_spline<-C_spline/trapz2d(seq_x,seq_y,C_spline)
   C_spline_ind<-exp(spline_ind)
   C_spline_ind<-C_spline_ind/trapz2d(seq_x,seq_y,C_spline_ind)
   C_spline_int<-exp(spline_int)
   C_spline_int<-C_spline_int/trapz2d(seq_x,seq_y,C_spline_int)
-  
+  C_spline_x<-exp(spline_x)
+  C_spline_x<-C_spline_x/trapz(seq_x,C_spline_x)
+  C_spline_y<-exp(spline_y)
+  C_spline_y<-C_spline_y/trapz(seq_y,C_spline_y)
   
   
   structure(list("Z_spline"=spline_opt,
@@ -329,6 +342,8 @@ bivariate<-function(x,y=NULL,alfa=0.5,rho=NULL,bin_selection=doane,knots_x_inner
                  "C_spline"=C_spline,
                  "C_spline_ind"=C_spline_ind,
                  "C_spline_int"=C_spline_int,
+                 "C_spline_x"=C_spline_x,
+                 "C_spline_y"=C_spline_y,
                  "seq_x"=seq_x,"seq_y"=seq_y,
                  "midpoints_x"=midpoints_x,"midpoints_y"=midpoints_y,
                  "F_mat"=F_mat,"hist_data"=hist_data,
@@ -338,102 +353,129 @@ bivariate<-function(x,y=NULL,alfa=0.5,rho=NULL,bin_selection=doane,knots_x_inner
                  "sd"=simp_d,"rsd"=rel_simp_d),class="bivariate_zbSpline")
 }
 
-plot.bivariate_zbSpline<-function(Z,type="static",what="full",scale="clr",title="",plot_hist=FALSE){
+plot.bivariate_zbSpline<-function(Z,type="static",what="full",scale="clr",title="",plot_hist=FALSE,plot=TRUE,xlab="x",ylab="y"){
   #type can be static or interactive
-  #What can be either full, independent, interaction or geometric marginals
+  #what can be either full, independent, interaction, geom_X or geom_Y
   #plot_hist is whether we plot the underlying histogram
   #scale chooses between the clr transform or the density
-
-    #We can update all of these to finding a response and range based on the if statements
-    if(what=="full"){
-      if(scale=="clr"){
-        outcome<-Z$Z_spline
-      }
-      if(scale=="density"){
-        outcome<-Z$C_spline
-      }
+  if (!type %in% c("static", "interactive")) {
+    stop("Error: 'type' must be either 'static' or 'interactive'")
+  }
+  
+  valid_what <- c("full", "independent", "interaction", "geom_X", "geom_Y")
+  if (!what %in% valid_what) {
+    stop("Error: 'What' must be one of 'full', 'independent', 'interaction', 'geom_X', or 'geom_Y'")
+  }
+  if (!is.logical(plot_hist)) {
+    stop("Error: 'plot_hist' must be a logical value (TRUE or FALSE)")
+  }
+  if (!scale %in% c("clr", "density")) {
+    stop("Error: 'scale' must be either 'clr' or 'density'")
+  }
+  
+  #We can update all of these to finding a response and range based on the if statements
+  if (what == "full") {
+    outcome <- if (scale == "clr") Z$Z_spline else Z$C_spline
+  } else if (what == "interaction") {
+    outcome <- if (scale == "clr") Z$Z_spline_int else Z$C_spline_int
+  } else if (what == "independent") {
+    outcome <- if (scale == "clr") Z$Z_spline_ind else Z$C_spline_ind
+  }
+  
+  if (plot_hist) {
+    hist_response <- if (scale == "clr") {
+      Z$F_mat
+    } else {
+      Z$hist_data / trapz2d(Z$midpoints_x, Z$midpoints_y, Z$hist_data)
     }
-    if(what=="interaction"){
-      if(scale=="clr"){
-        outcome<-Z$Z_spline_int
-      }
-      if(scale=="density"){
-        outcome<-Z$C_spline_int
-      }
-    }
-    if(what=="independent"){
-      if(scale=="clr"){
-        outcome<-Z$Z_spline_ind
-      }
-      if(scale=="density"){
-        outcome<-Z$C_spline_ind
-      }
-    }
-    range<-c(min(outcome)-0.5,max(outcome)+0.5)
-    
-    if(type=="static"){ #Here we use the persp3D function
+    grid <- expand.grid("x" = Z$midpoints_x, "y" = Z$midpoints_y)
+  }
+  
+  # Plotting based on 'what' and 'type'
+  if (what %in% c("full", "independent", "interaction")) {
+    if (type == "static") {
+      # Static plotting using persp3D
       persp3D(
         x = Z$seq_x, 
         y = Z$seq_y, 
         z = outcome, 
         col = viridis(50),
-        theta = 315,          
+        theta = 325,          
         phi = 30,            
         ticktype = "detailed", 
         nticks = 3,
-        zlim = range,
-        xlab = "",          
-        ylab = "",          
+        xlab = xlab,          
+        ylab = ylab,          
         zlab = "",          
         bty = "b2",
-        colkey=F,
-        main=title,
-        cex.axis=0.5
+        colkey = FALSE,
+        main = title,
+        cex.axis = 0.5
       )
-    if(plot_hist){
-      if(scale=="clr"){
-        hist_response<-Z$F_mat
+      if (plot_hist) {
+        points3D(
+          x = grid$x,
+          y = grid$y,
+          z = as.vector(hist_response),
+          add = TRUE,
+          col = "black",
+          pch = 19,
+          cex = 0.5
+        )
       }
-      if(scale=="density"){
-        hist_response<-Z$hist_data/trapz2d(Z$midpoints_x,Z$midpoints_y,Z$hist_data)
-      }
-      grid<-expand.grid("x"=Z$midpoints_x,"y"=Z$midpoints_y)
-      points3D(
-        x = grid$x,   # Repeat x for each y value
-        y = grid$y,   # Repeat y for each x value
-        z = as.vector(hist_response),                # Flatten z matrix to match x and y
-        add = TRUE,
-        col = "black",
-        pch = 19,
-        cex = 0.5
-      )
-    }
-    }
-    if(type=="interactive"){
-      p<-plot_ly()
-      p<- p%>%add_surface(x=Z$seq_x,y=Z$seq_y,z=outcome)
-
-      if(plot_hist){
-        if(scale=="clr"){
-          hist_response<-Z$F_mat
-        }
-        if(scale=="density"){
-          hist_response<-Z$hist_data/trapz2d(Z$midpoints_x,Z$midpoints_y,Z$hist_data)
-        }
-        grid<-expand.grid("x"=Z$midpoints_x,"y"=Z$midpoints_y)
-        p<-p%>% add_markers(x = grid$x,
-        y = grid$y,
-        z = as.vector(hist_response),marker=list(size=3,color="black"))
+    } else {
+      # Interactive plotting using plotly
+      p <- plot_ly() %>%
+        add_surface(x = Z$seq_x, y = Z$seq_y, z = t(outcome))%>%layout(title=title)
+      if (plot_hist) {
+        p <- p %>%
+          add_markers(
+            x = grid$x,
+            y = grid$y,
+            z = as.vector(hist_response),
+            marker = list(size = 3, color = "black")
+          )
       }
       p
     }
+  } else {
+    # 2D plotting for 'geom_X' and 'geom_Y'
+    axis_var <- if (what == "geom_X") "x" else "y"
+    seq_var <- Z[[paste0("seq_", axis_var)]]
+    if(scale=="clr"){
+      spline_var <- Z[[paste0("Z_spline_", axis_var)]]
+    } else if (scale=="density"){
+      spline_var <- Z[[paste0("C_spline_", axis_var)]]
+    }
+
+    plot_data <- data.frame("x" = seq_var, "z" = spline_var)
+    p <- ggplot(plot_data) +
+      geom_line(aes(x = x, y = z)) +
+      xlab(what)
+    if (plot_hist) {
+      midpoints_var <- Z[[paste0("midpoints_", axis_var)]]
+      if(scale=="clr"){
+        bins <- if (axis_var == "x") rowMeans(Z$F_mat) else colMeans(Z$F_mat)
+      } else if(scale=="density") {
+        bins <- if (axis_var == "x") rowMeans(Z$hist_data) else colMeans(Z$hist_data)
+        bins<-bins/trapz(midpoints_var,bins)
+      }
+      plot_hist_data <- data.frame("x" = midpoints_var, "z" = bins)
+      p <- p +
+        geom_point(aes(x = x, y = z), data = plot_hist_data, shape = 8, color = "blue")
+    }
+    p
+  }
 }
 
 
 #We still need a cross_validate function
 
-cross_validate2d<-function(x,y=NULL,alfa_seq=seq(0.01,0.99,length.out=20),res=100,k=2,l=2,u=1,v=1,knots_x_inner,knots_y_inner,bin_selection=doane){
-  cv<-numeric(length(alfa))
+cross_validate2d<-function(x,y=NULL,alfa_seq=seq(0.01,0.99,length.out=20),rho=NULL,res=100,k=2,l=2,u=1,v=1,knots_x_inner,knots_y_inner,bin_selection=doane){
+  if(!is.null(rho)){
+    alfa_seq<-1/(rho+1)
+  }
+  cv<-numeric(length(alfa_seq))
   Z_temp<-bivariate(x,y,alfa=0.5,bin_selection=bin_selection,knots_x_inner=knots_x_inner,knots_y_inner=knots_y_inner,k=k,l=l,u=u,v=v,res=5)
   csR<-as.vector(Z_temp$R_opt)
   csZ<-c(as.vector(Z_temp$Z_opt),Z_temp$v_opt,Z_temp$u_opt)
@@ -445,43 +487,46 @@ cross_validate2d<-function(x,y=NULL,alfa_seq=seq(0.01,0.99,length.out=20),res=10
   for(i in seq_along(alfa_seq)){
   Z<-bivariate(x,y,alfa_seq[i],knots_x_inner=knots_x_inner,knots_y_inner=knots_y_inner,bin_selection=bin_selection,k=k,l=l,u=u,v=v,res=res)
   H<-kronecker(t(Z$Z_y_bar),t(Z$Z_x_bar))%*%P%*%solve(Z$G)%*%Z$bbZ_bar
-  m<-length(midpoints_x)
-  n<-length(midpoints_y)
+  m<-length(Z$midpoints_x)
+  n<-length(Z$midpoints_y)
   cv[i]<-mean((Z$F_mat-Z$spline_hist)^2)/((1-sum(diag(H))/(m*n))^2)
   }
+  structure(list("alfa" = alfa_seq, "cv" = cv, "optimum" = alfa_seq[which.min(cv)]),class="zbCV")
 }
 
-# plot(Z2D,what="full",plot_hist=TRUE)
-# 
-# Z<-bivariate(x,y,knots_x_inner=knots_x_inner,knots_y_inner=knots_y_inner)
-# 
-# all.equal(spline_2d$spline,spline_2d$spline_int+spline_2d$spline_ind)
-# 
-# 
-# 
-# persp3D(seq_x,seq_y,spline_ind+spline_int,col="green")
-# persp3D(seq_x,seq_y,spline_int,add=TRUE,col="red")
-# persp3D(seq_x,seq_y,spline_ind,add=TRUE,col="blue")
-# 
-# p <- plot_ly()
-# 
-# # Add the combined surface with a solid color
-# p <- p %>% add_surface(x = ~seq_x, y = ~seq_y, z = ~spline_opt, 
-#                        colorscale = list(c(0, 1), c("blue", "blue")), 
-#                        opacity = 0.6, name = "Combined Surface",showscale=FALSE)
-# 
-# # Add the spline_int surface with a solid color
-# p <- p %>% add_surface(x = ~seq_x, y = ~seq_y, z = ~spline_int, 
-#                        colorscale = list(c(0, 1), c("green", "green")), 
-#                        opacity = 0.6, showscale = FALSE, name = "Spline Int")
-# 
-# # Add the spline_ind surface with a solid color
-# p <- p %>% add_surface(x = ~seq_x, y = ~seq_y, z = ~spline_ind, 
-#                        colorscale = list(c(0, 1), c("red", "red")), 
-#                        opacity = 0.6, showscale = FALSE, name = "Spline Ind")
-# 
-# p
-# 
-# hist3D(x=midpoints_x,y=midpoints_y,z=(CLR(counts_impute)),add=TRUE)
-
-
+perm_test<-function(x,y,kx,ky,alfa=1,bin_selection=doane,k=2,l=2,u=1,v=1,res=100,K=200){
+  rsd_true<-bivariate(x,y,alfa=alfa,bin_selection=bin_selection,knots_x_inner=kx,knots_y_inner=ky,k=k,l=l,u=u,v=v,res=res)$rsd
+  rsd_vec<-numeric(K)
+  for (i in 1:K) {
+    repeat {  # Use repeat to retry in case of an error
+      # Try-catch block
+      tryCatch({
+        # Sample data
+        x_new <- sample(x, replace = TRUE)
+        y_new <- sample(y, replace = TRUE)
+        
+        # Define knot sequences
+        kx_new <- seq(min(x_new), max(x_new), length.out = 4)
+        ky_new <- seq(min(y_new), max(y_new), length.out = 4)
+        
+        # Run the bivariate function and store result
+        sim_rsd <- bivariate(x_new, y_new, alfa = alfa, bin_selection = bin_selection, 
+                             knots_x_inner = kx_new, knots_y_inner = ky_new, 
+                             k = k, l = l, u = u, v = v, res = res)
+        rsd_vec[i] <- sim_rsd$rsd  # Save result
+        
+        break  # Exit repeat if no error occurs
+        
+      }, error = function(e) {
+        # Check if it's the specific error, if so, retry
+        if (grepl("system is computationally singular", e$message)) {
+          message("Singular matrix encountered, retrying iteration ", i)
+        } else {
+          stop(e)  # If it's another error, stop execution
+        }
+      })
+    }
+  }
+  p<-length(which(rsd_vec>=rsd_true))/K
+  return(p)
+}

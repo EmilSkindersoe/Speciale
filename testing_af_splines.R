@@ -154,14 +154,14 @@ sample_bivariate<-function(n=3000){
 
 
 
-
+set.seed(1)
 sample<-sample_bivariate()
 x<-sample$X
 y<-sample$Y
 m<-10
 n<-10
-breaks_x<-seq(min(x),max(x),length.out=m+1)
-breaks_y<-seq(min(y),max(y),length.out=n+1)
+breaks_x<-seq(0,1,length.out=m+1)
+breaks_y<-seq(0,1,length.out=n+1)
 levels_x <- 1:m
 levels_y <- 1:n
 
@@ -184,11 +184,27 @@ counts<-impute_zeros(counts)
 list_data<-list("x"=midpoints_x,"y"=midpoints_y,"data"=counts)
 knots_x_inner<-c(0,0.25,0.5,0.75,1)->knots_y_inner
 
-hist3D(midpoints_x,midpoints_y,counts/(sum(counts)*0.1*0.1))
+#hist3D(midpoints_x,midpoints_y,counts/(sum(counts)*0.1*0.1))
 
-Z2D<-bivariate(x,y,rho=0.001,bin_selection=c(10,10),knots_x_inner=knots_x_inner,knots_y_inner=knots_y_inner,k=2,l=2,u=1,v=1,res=50)
+Z2D<-bivariate(list_data,rho=0.001,bin_selection=c(10,10),knots_x_inner=knots_x_inner,knots_y_inner=knots_y_inner,k=2,l=2,u=1,v=1,res=50)
+Z2D$rsd
+par(mfrow=c(3,2),mar=c(0,0,1,0))
 
-plot(Z2D,what="full",scale="density",plot_hist=TRUE,type="interactive")
+plot(Z2D,what="full",scale="clr",plot_hist=TRUE,type="static",title="clr full")
+plot(Z2D,what="full",scale="density",plot_hist=TRUE,type="static",title="density full")
+plot(Z2D,what="independent",scale="clr",type="static","clr independent")
+plot(Z2D,what="independent",scale="density",type="static","density independent")
+plot(Z2D,what="interaction",scale="clr",type="static","clr interaction")
+plot(Z2D,what="interaction",scale="density",type="static","density interaction")
+mtext("N=3000", outer = FALSE, cex = 1.5, line=35,side=3,adj=-0.1)
+
+
+
+cv2D<-cross_validate2d(list_data,rho=seq(0.001,0.04,length.out=50),knots_x_inner=knots_x_inner,knots_y_inner=knots_y_inner)
+plot(cv2D)
+cv2D$optimum
+(1-cv2D$optimum)/cv2D$optimum
+
 
 
 simpson2d(f,0.001,0.99,0.001,0.99)
