@@ -2,12 +2,18 @@ source("~/Universitet-mat/.Speciale/R/splines_source1.R")
 source("~/Universitet-mat/.Speciale/R/splines_bivariate.R")
 library(readxl)
 ice_ages<-read_excel("Rasmussen_et_al_2014_QSR_Table_2.xlsx",range = "A22:E139")[-(1:8),]
+ice_ages<-ice_ages[-(97:nrow(ice_ages)),]
 #GS is cold and GI is milder
+
 
 
 ice_cores<-read_excel("GICC05modelext_GRIP_and_GISP2_and_resampled_data_series_Seierstad_et_al._2014_version_10Dec2014-2.xlsx", 
                 sheet = "3) d18O and Ca 20 yrs mean", 
                 range = "A51:M12500")[-1,]
+
+ice_cores<-read_excel("GICC05modelext_GRIP_and_GISP2_and_resampled_data_series_Seierstad_et_al._2014_version_10Dec2014-2.xlsx", 
+                                 sheet = "4) d18O and Ca 50 yrs mean", 
+                                 range = "A5:M4894")[-1,]
 
 ngrip2<-na.omit(as.data.frame(lapply(ice_cores[,c(1,5:6)],as.numeric),col.names = c("age","d18O","Ca2")))
 grip<-na.omit(as.data.frame(lapply(ice_cores[,c(1,8:9)],as.numeric),col.names = c("age","d18O","Ca2")))
@@ -37,18 +43,20 @@ split_ice<-function(ice_ages,data){
   periods<-ice_ages$period
   subsets_list<-list()
   j<-1
-  for(i in 2:length(ice_times)){
-    interval<-c(ice_times[i-1],ice_times[i])
-    sub_data<-subset(data,age>interval[1]&age<interval[2])
-    if(!nrow(sub_data)==0){
+  for(i in length(ice_times):2){
+    interval<-c(ice_times[i],ice_times[i-1])
+    sub_data<-subset(data,age<interval[1]&age>interval[2])
+    if(nrow(sub_data)==0){stop(paste("No data in interval",interval))}
       subsets_list[[j]]<-sub_data
-      names(subsets_list)[j]<-periods[i-1]
+      names(subsets_list)[j]<-periods[i]
       j<-j+1
-    }
   }
+  subsets_list[[j]]<-subset(data,age<ice_times[i]) #To handle the last period because it is just all data before
+  names(subsets_list)[j]<-periods[i-1]
   return(subsets_list)
 }
-
+ice_ages<-ice_age_proc
+data<-ngrip2
 ngrip2_list<-split_ice(ice_age_proc,ngrip2)
 grip_list<-split_ice(ice_age_proc,grip)
 gisp_list<-split_ice(ice_age_proc,gisp)
@@ -56,6 +64,10 @@ gisp_list<-split_ice(ice_age_proc,gisp)
 #We cross-validate over all observations from all cores
 #x<-c(ngrip2$d18O,grip$d18O,gisp$d18O)
 #y<-c(ngrip2$Ca2,grip$Ca2,gisp$Ca2)
+
+count_observations(gisp_list,"GI")
+nrow(do.call(rbind,ngrip2_list[seq(1,length(ngrip2_list),by=2)]))
+ngrip_cold<-do.call(rbind,ngrip2_list[seq(2,length(ngrip2_list),by=2)])
 x<-c(ngrip2$d18O)
 y<-c(ngrip2$Ca2)
 
@@ -66,17 +78,17 @@ ky<-seq(min(y),max(y),length.out=4)
 #plot(cross)
 #cross$optimum
 
-biv_full<-bivariate(x,y,alfa=0.11,knots_x_inner=kx,knots_y_inner=ky,k=3,l=3,u=1,v=1)
-plot(biv_full,scale="density",plot_hist=TRUE,type="static",title="density function of all cores and all observations",xlab="δ18O",ylab="[Ca2+]")
+biv_full<-bivariate(x,y,alfa=0.9,knots_x_inner=kx,knots_y_inner=ky,k=3,l=3,u=1,v=1)
+plot(biv_full,scale="density",plot_hist=TRUE,type="interactive",title="density function of all cores and all observations",xlab="δ18O",ylab="log[Ca2+]")
 
 par(mfrow=c(3,2),mar=c(0,0,1,0))
 
-plot(biv_full,what="full",scale="clr",plot_hist=TRUE,type="static",title="clr full",,xlab="δ18O",ylab="[Ca2+]")
-plot(biv_full,what="full",scale="density",plot_hist=TRUE,type="static",title="density full",,xlab="δ18O",ylab="[Ca2+]")
-plot(biv_full,what="independent",scale="clr",type="static","clr independent",xlab="δ18O",ylab="[Ca2+]")
-plot(biv_full,what="independent",scale="density",type="static","density independent",,xlab="δ18O",ylab="[Ca2+]")
-plot(biv_full,what="interaction",scale="clr",type="static","clr interaction",xlab="δ18O",ylab="[Ca2+]")
-plot(biv_full,what="interaction",scale="density",type="static","density interaction",xlab="δ18O",ylab="[Ca2+]")
+plot(biv_full,what="full",scale="clr",plot_hist=TRUE,type="static",title="clr full",,xlab="δ18O",ylab="log[Ca2+]")
+plot(biv_full,what="full",scale="density",plot_hist=TRUE,type="static",title="density full",,xlab="δ18O",ylab="log[Ca2+]")
+plot(biv_full,what="independent",scale="clr",type="static","clr independent",xlab="δ18O",ylab="log[Ca2+]")
+plot(biv_full,what="independent",scale="density",type="static","density independent",,xlab="δ18O",ylab="log[Ca2+]")
+plot(biv_full,what="interaction",scale="clr",type="static","clr interaction",xlab="δ18O",ylab="log[Ca2+]")
+plot(biv_full,what="interaction",scale="density",type="static","density interaction",xlab="δ18O",ylab="log[Ca2+]")
 biv_full$rsd
 
 
@@ -92,8 +104,8 @@ ky<-seq(min(y),max(y),length.out=4)
 #Og vi skal måske finde et optimalt alpha til istider og varmeperioder
 
 par(mfrow=c(1,1))
-biv_mild<-bivariate(x,y,knots_x_inner = kx,knots_y_inner=ky,bin_selection=doane,alfa=0.11,k=3,l=3,u=1,v=1)
-plot(biv_mild,scale="density",what="full",type="static",plot_hist=FALSE,title="density function during mild period (GI-1, NGRIP2)",xlab="δ18O",ylab="[Ca2+]")
+biv_mild<-bivariate(x,y,knots_x_inner = kx,knots_y_inner=ky,bin_selection=doane,alfa=0.6,k=3,l=3,u=1,v=1)
+plot(biv_mild,scale="density",what="full",type="static",plot_hist=FALSE,title="density function during mild period (GI-1, NGRIP2)",xlab="δ18O",ylab="log[Ca2+]",xlim=c(-45,-35))
 
 
 
@@ -105,13 +117,13 @@ ky<-seq(min(y),max(y),length.out=4)
 #cross<-cross_validate2d(x,y,knots_x_inner=kx,knots_y_inner=ky,bin_selection=doane)
 #plot(cross)
 
-biv_ice<-bivariate(x,y,knots_x_inner = kx,knots_y_inner=ky,bin_selection=doane,alfa=0.11,k=3,l=3,u=1,v=1)
-plot(biv_ice,scale="density",what="full",type="static",plot_hist=FALSE,title="density function during cold period (GS-2, NGRIP2)",xlab="δ18O",ylab="[Ca2+]")
+biv_ice<-bivariate(x,y,knots_x_inner = kx,knots_y_inner=ky,bin_selection=doane,alfa=1,k=3,l=3,u=1,v=1)
+plot(biv_ice,scale="density",what="full",type="static",plot_hist=FALSE,title="density function during cold period (GS-2, NGRIP2)",xlab="δ18O",ylab="log[Ca2+]",xlim=c(-45,-35))
 #The distributions during different ages are rather dissimilar, so it would be unfair to show samples
 
-ngrip2_rsd<-data.frame("rsd"=rep(NA,length(ngrip2_list)),"period"=rep(c("cold","mild"),length.out=length(ngrip2_list)))
-grip_rsd<-data.frame("rsd"=rep(NA,length(grip_list)),"period"=rep(c("cold","mild"),length.out=length(grip_list)))
-gisp_rsd<-data.frame("rsd"=rep(NA,length(gisp_list)),"period"=rep(c("cold","mild"),length.out=length(gisp_list)))
+#ngrip2_rsd<-data.frame("rsd"=rep(NA,length(ngrip2_list)),"period"=rep(c("cold","mild"),length.out=length(ngrip2_list)))
+#grip_rsd<-data.frame("rsd"=rep(NA,length(grip_list)),"period"=rep(c("cold","mild"),length.out=length(grip_list)))
+#gisp_rsd<-data.frame("rsd"=rep(NA,length(gisp_list)),"period"=rep(c("cold","mild"),length.out=length(gisp_list)))
 
 fill_rsd<-function(list){
   ice_rsd<-data.frame("rsd"=NA,"period"=rep(c("cold","mild"),length.out=length(list)))
@@ -120,17 +132,22 @@ fill_rsd<-function(list){
     y<-list[[i]]$Ca2
     kx<-seq(min(x),max(x),length.out=4)
     ky<-seq(min(y),max(y),length.out=4)
-    dens <- tryCatch({
-      bivariate(x, y, alfa = 0.1, bin_selection = doane, knots_x_inner = kx, 
-                knots_y_inner = ky, k = 3, l = 3, u = 1, v = 1)
-    }, error = function(e) {
-      message("Skipping iteration ", i, " due to error: ", conditionMessage(e))
-      NULL # Return NULL if there's an error
-    })
-    
-    # Only assign if dens was successfully computed
-    if (!is.null(dens)) {
-      ice_rsd$rsd[i] <- dens$rsd
+    cross<-tryCatch({
+      cross_validate2d(x,y,knots_x_inner=kx,knots_y_inner=ky,bin_selection=doane,k=3,l=3,u=1,v=1)},
+       error = function(e) {
+       message("Skipping iteration ", i, " due to error: ", conditionMessage(e))
+       NULL # Return NULL if there's an error
+      })
+    if(!is.null(cross)){
+      dens <- tryCatch({
+        bivariate(x, y, alfa = cross$optimum, bin_selection = doane, knots_x_inner = kx, 
+                  knots_y_inner = ky, k = 3, l = 3, u = 1, v = 1)
+      })
+      
+      # Only assign if dens was successfully computed
+      if (!is.null(dens)) {
+        ice_rsd$rsd[i] <- dens$rsd
+      }
     }
   }
   return(ice_rsd)
@@ -147,7 +164,7 @@ combined_box$source=factor(combined_box$source,levels=c("NGRIP2","GRIP","GISP"))
 ggplot(combined_box, aes(x = period, y = rsd, fill = period)) +
   geom_boxplot() +
   facet_wrap(~ source) +
-  labs(title = "Distribution of RSD for Cold and Mild Periods",
+  labs(title = "20 year average",
        x = "Period", y = "RSD") +
   theme_minimal()+
   ylim(c(0,1))
@@ -179,3 +196,68 @@ p_mild<-perm_test(x,y,kx=kx,ky=ky,alfa=0.1,k=3,l=3,u=1,v=1,K=1000)
 p_mild
 
 dhsic.test(x,y,method="gamma")
+
+
+par(mfrow=c(1,1))
+
+#To compare different bivariate estimators
+x<-c(subset(ngrip2,age>11700 & age<104000)$d18O,subset(grip,age>11700 & age<104000)$d18O,subset(gisp,age>11700 & age<104000)$d18O)
+y<-c(subset(ngrip2,age>11700 & age<104000)$Ca2,subset(grip,age>11700 & age<104000)$Ca2,subset(gisp,age>11700 & age<104000)$Ca2)
+kx<-seq(min(x),max(x),length.out=10)
+ky<-seq(min(y),max(y),length.out=10)
+biv_fit<-bivariate(x,y,alfa=0.9,bin_selection=doane,knots_x_inner=kx,knots_y_inner=ky,k=3,l=3,u=1,v=1)
+plot(biv_fit,scale="density",title="C-spline density",xlab="δ18O",ylab="log[Ca2+]",plot_hist=TRUE) #Vi kan faktisk genkende de kolde og milde perioder her
+#Samtidig kan vi se at den kolde bin faktisk nok fittes lidt unaturligt højt
+dens<-kde2d(x,y,n=200)
+persp3D(x = dens$x, 
+                y = dens$y, 
+                z = dens$z, 
+                col = viridis(50),
+                theta = 325,          
+                phi = 30,            
+                ticktype = "detailed", 
+                nticks = 3,
+                xlab="δ18O",
+                ylab="log[Ca2+]",          
+                zlab = "",          
+                bty = "b2",
+                colkey = FALSE,
+                main = "KDE",
+                cex.axis = 0.5,
+                zlim=c(0,0.21))
+
+
+x_centers<-biv_fit$midpoints_x
+y_centers<-biv_fit$midpoints_y
+grid<-expand.grid("X"=x_centers,"Y"=y_centers)
+
+
+
+grid$Z<-c(biv_fit$hist_data/trapz2d(x_centers,y_centers,biv_fit$hist_data))
+fit<-gam(Z~te(X,Y,bs="cr",k=c(10,10),m=c(3,2)),data=grid)
+x_pred <- seq(min(x_centers), max(x_centers), length.out = 100)
+y_pred <- seq(min(y_centers), max(y_centers), length.out = 100)
+pred_grid <- expand.grid(X = x_pred, Y = y_pred)
+pred_grid$Z <- predict(fit, newdata = pred_grid)
+
+# Reshape the prediction data for persp3D
+z_matrix <- matrix(pred_grid$Z, nrow = length(x_pred), ncol = length(y_pred))
+persp3D(
+  x = x_pred, 
+  y = y_pred, 
+  z = z_matrix, 
+  col = viridis(50),        # Use viridis for color gradient
+  theta = 325,              # Rotation angle
+  phi = 30,                 # Viewing angle
+  ticktype = "detailed", 
+  nticks = 3,               # Number of ticks
+  xlab = "δ18O",            # X-axis label
+  ylab = "log[Ca2+]",       # Y-axis label
+  zlab = "",                # Z-axis label
+  bty = "b2",               # Box type
+  colkey = FALSE,           # Disable color legend
+  main = "B-spline density",# Title
+  cex.axis = 0.5,
+  zlim=c(0,0.21)
+)
+trapz2d(x_pred,y_pred,z_matrix)

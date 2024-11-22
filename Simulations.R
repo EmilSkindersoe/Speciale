@@ -160,6 +160,8 @@ x_vals<-seq(-2,2,length.out=50)->y_vals
 clr_asym<-clr2d(function(x,y){asym_density(x,y,1)},x_vals,y_vals)
 z_vals<-outer(x_vals,y_vals,FUN=clr_asym)
 persp3D(x_vals,y_vals,z_vals,theta=30,phi=60,col=viridis(50),ticktype="detailed",main=expression(rho==1),colkey=FALSE) 
+#Maybe add the plots of clr-transformed things
+
 
 #We perform the power analysis on the centered data first
 #We take 8 values of rho from 0 to 1, and run 100 tests in each case
@@ -188,13 +190,14 @@ for(i in 1:nrow(p_vals_asym)){
   kx<-seq(min(x),max(x),length.out=5)
   ky<-seq(min(x),max(x),length.out=5)
   #biv<-bivariate(x,x,alfa=1,bin_selection=scott,knots_x_inner=kx,knots_y_inner=kx,k=2,l=2,u=1,v=1,res=100)
-  biv<-perm_test(x,y,kx,ky,alfa=1,bin_selection=scott,k=2,l=2,u=1,v=1,res=100,K=100)
+  biv<-perm_test(x,y,kx,ky,alfa=1,bin_selection=scott,k=2,l=2,u=1,v=1,res=100,K=200)
   p_vals_asym$rsd[i]<-biv
   p_vals_asym$spearman[i]<-cor.test(x,y,method="spearman")$p.value #Simply use spearman test
   p_vals_asym$dhsic[i]<-dhsic.test(x,y,method="gamma")$p.value #Gaussian kernel with median value as bandwidth
   p_vals_asym$copula[i]<-indepTest(simulation,ind_sim)$pvalues #We use global statistic
 }
 
+saveRDS(p_vals_asym,"asymetric p-values")
 
 
 p_vals_summary <- p_vals_asym %>%
@@ -230,13 +233,12 @@ ggplot(p_vals_summary, aes(x = rho, color = test)) +
 ggplot(p_vals_power,aes(x=rho,color=test))+
   geom_line(aes(y=power))+
   theme_minimal()+
-  labs(title=expression("Power as a function of "*rho),
-       subtitle="Perimeter data",
+  labs(title="Perimeter data",
        x=expression(rho),
        y="power (%)")+
   scale_color_brewer(palette="Set1")
 
-saveRDS(p_vals_asym,"asymetric p-values")
+
 
 rho_seq<-seq(0,0.3,length.out=8)
 p_vals_sym<-data.frame("rho"=sort(rep(rho_seq,100)),"rsd"=NA,"spearman"=NA,"dhsic"=NA,"copula"=NA)
@@ -249,7 +251,7 @@ for(i in 1:nrow(p_vals_sym)){
   kx<-seq(min(x),max(x),length.out=5)
   ky<-seq(min(x),max(x),length.out=5)
   #biv<-bivariate(x,x,alfa=1,bin_selection=scott,knots_x_inner=kx,knots_y_inner=kx,k=2,l=2,u=1,v=1,res=100)
-  biv<-perm_test(x,y,kx,ky,alfa=1,bin_selection=scott,k=2,l=2,u=1,v=1,res=100,K=100)
+  biv<-perm_test(x,y,kx,ky,alfa=1,bin_selection=scott,k=2,l=2,u=1,v=1,res=100,K=200)
   p_vals_sym$rsd[i]<-biv
   p_vals_sym$spearman[i]<-cor.test(x,y,method="spearman")$p.value #Simply use spearman test
   p_vals_sym$dhsic[i]<-dhsic.test(x,y,method="gamma")$p.value #Gaussian kernel with median value as bandwidth
@@ -293,8 +295,7 @@ ggplot(p_vals_summary, aes(x = rho, color = test)) +
 ggplot(p_vals_power,aes(x=rho,color=test))+
   geom_line(aes(y=power))+
   theme_minimal()+
-  labs(title=expression("Power as a function of "*rho),
-       subtitle="Centered data",
+  labs(title="Centered data",
        x=expression(rho),
        y="power (%)")+
   scale_color_brewer(palette="Set1")

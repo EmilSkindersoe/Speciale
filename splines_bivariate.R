@@ -88,8 +88,9 @@ trapz2d <- function(x, y, f) {
 clr2d<-function(f,x,y){
   f_vals<-log(outer(x,y,FUN=f))
   int<-trapz2d(x,y,f_vals)
+  area <- (max(x) - min(x)) * (max(y) - min(y))
   clr2_function<-function(x,y){
-    log(f(x,y))-int
+    log(f(x,y))-int/area
   }
   return(clr2_function)
 }
@@ -426,7 +427,9 @@ plot.bivariate_zbSpline<-function(Z,type="static",what="full",scale="clr",title=
     } else {
       # Interactive plotting using plotly
       p <- plot_ly() %>%
-        add_surface(x = Z$seq_x, y = Z$seq_y, z = t(outcome))%>%layout(title=title)
+        add_surface(x = Z$seq_x, y = Z$seq_y, z = t(outcome))%>%layout(title=title,
+                                                                       scene=list(xaxis=list(title=xlab),
+                                                                       yaxis=list(title=ylab)))
       if (plot_hist) {
         p <- p %>%
           add_markers(
@@ -502,8 +505,8 @@ perm_test<-function(x,y,kx,ky,alfa=1,bin_selection=doane,k=2,l=2,u=1,v=1,res=100
       # Try-catch block
       tryCatch({
         # Sample data
-        x_new <- sample(x, replace = TRUE)
-        y_new <- sample(y, replace = TRUE)
+        x_new <- sample(x, replace = FALSE)
+        y_new <- sample(y, replace = FALSE)
         
         # Define knot sequences
         kx_new <- seq(min(x_new), max(x_new), length.out = 4)
@@ -529,4 +532,24 @@ perm_test<-function(x,y,kx,ky,alfa=1,bin_selection=doane,k=2,l=2,u=1,v=1,res=100
   }
   p<-length(which(rsd_vec>=rsd_true))/K
   return(p)
+}
+
+
+dist_test<-function(x,y,f,samp_func,scale="clr",k=3,l=3,u=2,v=2,alfa=0.5,g=2,h=2,bin_selection=doane){
+  if (!scale %in% c("clr", "density")) {
+    stop("Error: 'scale' must be either 'clr' or 'density'")
+  }
+  if(scale=="density"){ #Ensure the function is a clr density
+    f<-clr2d(f,x,y)
+  }
+  #compute the empirical clr-density
+  kx<-seq(min(x),max(x),length.out=g+2)
+  ky<-seq(min(y),max(y),length.out=h+2)
+  fit<-bivariate(x,y,alfa=alfa,knots_x_inner=kx,knots_y_inner=ky,k=k,l=l,u=u,v=v)
+  #compute the hypothetical at same domain
+  x_vals<-fit$seq_x
+  y_vals<-fit$seq_y
+  hyp_val<-outer(x_vals,y_vals,FUN=f)
+  
+  hyp_dist<-trapz2d(x_vals,y_vals,(fit$Z_spline-hyp_val)^2) #Compute the integral over the squared difference
 }
