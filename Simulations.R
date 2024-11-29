@@ -37,7 +37,7 @@ asym_density<-function(x,y,rho){
 
 
 
-sample_sym<-gen_sym(10000,rho=0)
+sample_sym<-gen_sym(1000,rho=0)
 x<-sample_sym$x
 y<-sample_sym$y
 knots_x_inner<-c(min(x),-2,seq(-1,1,length.out=4),2,max(x))
@@ -47,7 +47,9 @@ knots_y_inner<-c(min(y),-2,seq(-1,1,length.out=4),2,max(y))
 #plot(cross_validation)
 
 
-biv_sym<-bivariate(x,y,knots_x_inner=knots_x_inner,alfa=0.9,bin_selection=c(10,10),knots_y_inner=knots_y_inner,k=3,l=3,u=1,v=1,res=100)
+biv_sym<-zbSpline2D(x,y,knots_x_inner=knots_x_inner,alfa=0.9,bin_selection=c(10,10),knots_y_inner=knots_y_inner,k=3,l=3,u=1,v=1,res=100)
+trapz(biv_sym$seq_x,biv_sym$Z_spline_x)
+
 biv_sym$rsd
 
 plot(biv_sym,scale="density",what="full",type="interactive",plot_hist=TRUE,title="rho=0")
@@ -319,8 +321,8 @@ for(i in 1:nrow(rsd_data)){
 }
 
 stats<- rsd_data%>%group_by(rho)%>%summarise("median_rsd"=median(rsd),
-                                             "LQR"=quantile(rsd,0),
-                                             "UQR"=quantile(rsd,1))
+                                             "LQR"=quantile(rsd,0.025),
+                                             "UQR"=quantile(rsd,0.75))
 
 
 ggplot(stats,mapping=aes(x=rho))+
@@ -329,5 +331,164 @@ ggplot(stats,mapping=aes(x=rho))+
   labs(title="RSD as a function of dependency parameter for perimeter data",
        x=expression(rho),
        y="median RSD")+
-  ylim(c(0,1))
+  ylim(c(0,1))+
   theme_minimal()
+  
+  library(microbenchmark)
+  library(dHSIC)
+  library(copula)
+#And we make a study of the computational time
+N<-c(30,50,100,500,1000,2000)
+run_times<-data.frame("N"=N,"rsd"=NA,"spearman"=NA,"dhsic"=NA,"copula"=NA)
+for(i in 1:length(N)){
+  print(N[i])
+  samp<-mvrnorm(n=N[i],mu=c(0,0),Sigma=matrix(c(1,0,0,1),nrow=2,ncol=2))
+  x<-samp[,1]
+  y<-samp[,2]
+  kx<-seq(min(x),max(x),length.out=5)
+  ky<-seq(min(y),max(y),length.out=5)
+  b<-microbenchmark(perm_test(x,y,kx=kx,ky=ky),cor.test(x,y,method="spearman"),dhsic.test(x,y),indepTest(samp,indepTestSim(N[i],2,N=200)),times=1)
+  run_times[i,2:5]<-as.data.frame(summary(b,unit="s"))$median
+} #Do note that the hsic test is used with an asymptotic result, so for lower sample sizes we would have to use a permutation test.
+#This would make hsic slower at this stage.
+#The constant runtime of rsd is because the most computationally demanding aspect is the imputation procedure, and this is barely impacted by sample size
+
+saveRDS(run_times,"run_times_2000")
+
+run_data<-run_times%>%
+  pivot_longer(cols=-N,values_to="run_time",names_to="test")
+
+run_times<-readRDS("run_times_8000")
+
+ggplot(run_data)+
+  geom_line(mapping=aes(x=N,y=run_time,color=test))+
+  ylab("run time (seconds)")+xlab("sample size")+
+  theme_minimal()+
+  scale_color_brewer(palette="Set1")
+
+
+
+
+
+#Since this shows us that the runtime is much lower for rsd, but its power grows slower as a function of rho,
+#it is interesting to see how the power grows as a function of sample size
+p_vals_samp<-data.frame("N"=sort(rep(c(30,50,100,500,1000,2000),100)),"rsd"=NA,"spearman"=NA,"dhsic"=NA,"copula"=NA)
+unique_Ns <- unique(p_vals_samp$N)
+ind_sim_list <- list()
+for (N in unique_Ns) {
+  ind_sim_list[[as.character(N)]] <- indepTestSim(N, 2, N = 200)
+}
+
+# If you want to save all x and y values, initialize lists to store them
+x_list <- vector("list", nrow(p_vals_samp))
+y_list <- vector("list", nrow(p_vals_samp))
+
+pb <- txtProgressBar(min = 0, max = nrow(p_vals_samp), style = 3)
+# Start the main loop
+for (i in 1:nrow(p_vals_samp)) {
+  setTxtProgressBar(pb, i)
+  
+  # Initialize success flag and attempt counter
+  success <- FALSE
+  attempt <- 0
+  max_attempts <- 10  # Set a maximum number of attempts
+  
+  # Declare x and y before the while loop
+  x <- NULL
+  y <- NULL
+  
+  while (!success && attempt < max_attempts) {
+    attempt <- attempt + 1
+    
+    # Generate simulation data
+    simulation <- gen_sym(n = p_vals_samp$N[i], rho = 0.2) #We use rho=0.2 and the symmetric
+    #To know that all tests will eventually reach full power, also Spearman
+    x <- simulation$x
+    y <- simulation$y
+    
+    # Compute knots
+    kx <- seq(min(x), max(x), length.out = 4)
+    ky <- seq(min(y), max(y), length.out = 4)
+    
+    # Perform permutation test with tryCatch
+    biv <- tryCatch(
+      {
+        perm_test(
+          x, y, kx, ky, alfa = 1, bin_selection = scott,
+          k = 2, l = 2, u = 1, v = 1, res = 100, K = 200
+        )
+      },
+      error = function(e) {
+        if (grepl("system is computationally singular", e$message)) {
+          # Error occurred, simulate new variables and retry
+          return(NULL)
+        } else {
+          # Re-throw other errors
+          stop(e)
+        }
+      }
+    )
+    
+    # Check if biv was successfully computed
+    if (!is.null(biv)) {
+      p_vals_samp$rsd[i] <- biv
+      success <- TRUE
+    } else if (attempt == max_attempts) {
+      warning(paste("Maximum attempts reached for i =", i, "with N =", p_vals_samp$N[i]))
+      p_vals_samp$rsd[i] <- NA
+      success <- TRUE  # Exit loop after maximum attempts
+    }
+    # If not successful and attempts remain, the loop continues
+  }
+  
+  # Save x and y to the global environment if desired
+  # Note: Be cautious with this, as it can clutter your workspace
+  assign(paste0("x_", i), x, envir = .GlobalEnv)
+  assign(paste0("y_", i), y, envir = .GlobalEnv)
+  
+  # Alternatively, store x and y in lists
+  x_list[[i]] <- x
+  y_list[[i]] <- y
+  
+  # Proceed with the rest of the tests using the latest x and y
+  # Perform Spearman's test
+  p_vals_samp$spearman[i] <- cor.test(x, y, method = "spearman")$p.value
+  
+  # Perform DHSIC test
+  p_vals_samp$dhsic[i] <- dhsic.test(x, y, method = "gamma")$p.value
+  
+  # Retrieve the precomputed ind_sim
+  ind_sim <- ind_sim_list[[as.character(p_vals_samp$N[i])]]
+  
+  # Perform the copula independence test
+  p_vals_samp$copula[i] <- indepTest(simulation, ind_sim)$pvalues
+}
+
+p_vals_power_N<-p_vals_samp %>%
+  pivot_longer(cols = -N, names_to = "test", values_to = "p_value") %>%
+  group_by(N, test) %>%
+  summarise(
+    power=length(which(p_value<0.05))
+  )
+
+saveRDS(p_vals_samp,"p_vals_samp")
+
+ggplot(p_vals_power_N,aes(x=N,color=test))+
+  geom_line(aes(y=power))+
+  theme_minimal()+
+  labs(x="sample size",
+       y="power (%)")+
+  scale_color_brewer(palette="Set1")+ylim(c(0,100))
+
+
+#We can combine the two plots to see power as a function of computational time
+
+run_times
+comb_datas<-merge(run_data,p_vals_power_N,by=c("test","N"),all.x=FALSE,all.y=FALSE)
+ggplot(comb_datas,aes(x=run_time,color=test))+
+  geom_line(aes(y=power))+
+  theme_minimal()+
+  labs(title="Centered data",
+       x="run time (seconds)",
+       y="power (%)")+
+  scale_color_brewer(palette="Set1")+ylim(c(0,100))+xlim(c(0,10))
