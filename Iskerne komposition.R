@@ -83,10 +83,10 @@ plot(biv_full,scale="density",plot_hist=TRUE,type="interactive",title="density f
 
 par(mfrow=c(3,2),mar=c(0,0,1,0))
 
-plot(biv_full,what="full",scale="clr",plot_hist=TRUE,type="static",title="clr full",,xlab="δ18O",ylab="log[Ca2+]")
-plot(biv_full,what="full",scale="density",plot_hist=TRUE,type="static",title="density full",,xlab="δ18O",ylab="log[Ca2+]")
+plot(biv_full,what="full",scale="clr",plot_hist=TRUE,type="static",title="clr full",xlab="δ18O",ylab="log[Ca2+]")
+plot(biv_full,what="full",scale="density",plot_hist=TRUE,type="static",title="density full",xlab="δ18O",ylab="log[Ca2+]")
 plot(biv_full,what="independent",scale="clr",type="static","clr independent",xlab="δ18O",ylab="log[Ca2+]")
-plot(biv_full,what="independent",scale="density",type="static","density independent",,xlab="δ18O",ylab="log[Ca2+]")
+plot(biv_full,what="independent",scale="density",type="static","density independent",xlab="δ18O",ylab="log[Ca2+]")
 plot(biv_full,what="interaction",scale="clr",type="static","clr interaction",xlab="δ18O",ylab="log[Ca2+]")
 plot(biv_full,what="interaction",scale="density",type="static","density interaction",xlab="δ18O",ylab="log[Ca2+]")
 biv_full$rsd
@@ -205,7 +205,7 @@ x<-c(subset(ngrip2,age>11700 & age<104000)$d18O,subset(grip,age>11700 & age<1040
 y<-c(subset(ngrip2,age>11700 & age<104000)$Ca2,subset(grip,age>11700 & age<104000)$Ca2,subset(gisp,age>11700 & age<104000)$Ca2)
 kx<-seq(min(x),max(x),length.out=10)
 ky<-seq(min(y),max(y),length.out=10)
-biv_fit<-bivariate(x,y,alfa=0.9,bin_selection=doane,knots_x_inner=kx,knots_y_inner=ky,k=3,l=3,u=1,v=1)
+biv_fit<-bivariate(x,y,alfa=0.9,bin_selection=scott,knots_x_inner=kx,knots_y_inner=ky,k=3,l=3,u=1,v=1)
 plot(biv_fit,scale="density",title="C-spline density",xlab="δ18O",ylab="log[Ca2+]",plot_hist=TRUE) #Vi kan faktisk genkende de kolde og milde perioder her
 #Samtidig kan vi se at den kolde bin faktisk nok fittes lidt unaturligt højt
 dens<-kde2d(x,y,n=200)

@@ -51,6 +51,7 @@ trapz2d <- function(x, y, f) {
 CLR<-function(x){
   return(log(x)-mean(log(x)))
 }
+
 clr <- function(f,x) { #x is used to get the range over which f is evaluated and the resolution
   a<-min(x)
   b<-max(x)
@@ -281,7 +282,7 @@ zbSpline1D<-function(x,alfa=0.5,l=2,k=3,bin_selection=doane,knots_inner=NULL,res
                  "U"=U,"H"=H,"M"=M,"Sl"=Sl,"K"=K,"knots"=knots,"x"=x,"x_seq"=x_seq,
                  "bin_points"=bin_points,"bin_values"=bins_new,"degree"=k,"g"=g,"alfa"=alfa),class="zbSpline1D")
 }
-zbSpline2D<-function(x,y=NULL,alfa=0.5,rho=NULL,bin_selection=doane,knots_x_inner,knots_y_inner,k=3,l=3,u=2,v=2,res=200){
+zbSpline2D<-function(x,y=NULL,knots_x_inner,knots_y_inner,alfa=0.5,rho=NULL,bin_selection=doane,k=3,l=3,u=2,v=2,res=200,range_x=NULL,range_y=NULL){
   #x,y are either vectors of observation (x,y) or x is a list of length 3 with the first two being the midpoints and the third being a matrix of bin_values
   #alfa is the smoothing parameter used in Machalova21 and Hron23, and is converted to the smoothing parameter of skorna unless this is specified directly
   #bin_selection is either a function or numeric. In the first case it will calculate the number of bins by the specified rule-of-thumb. In the second it will use the provided number of bins.
@@ -351,10 +352,19 @@ zbSpline2D<-function(x,y=NULL,alfa=0.5,rho=NULL,bin_selection=doane,knots_x_inne
   knots_y<-c(rep(knots_y_inner[1],l),knots_y_inner,rep(knots_y_inner[length(knots_y_inner)],l))
   
   
-  a<-min(knots_x); b<-max(knots_x); c<-min(knots_y); d<-max(knots_y)
+
   
-  seq_x<-seq(a,b,length.out=res)
-  seq_y<-seq(c,d,length.out=res)
+  if(is.null(range_x)){
+    seq_x<-seq(min(knots_x),max(knots_x),length.out=res)
+  } else{seq_x<-seq(range_x[1],range_x[2],length.out=res)
+    }
+  
+  if(is.null(range_y)){
+    seq_y<-seq(min(knots_y),max(knots_y),length.out=res)
+    } else{seq_y<-seq(range_y[1],range_y[2],length.out=res)
+  }
+  
+  a<-min(seq_x); b<-max(seq_x); c<-min(seq_y); d<-max(seq_y)
   
   #We generate the Z_x_bar and Z_y_bar matrices
   lambda_x<-numeric(g+k+1)
@@ -492,22 +502,31 @@ zbSpline2D<-function(x,y=NULL,alfa=0.5,rho=NULL,bin_selection=doane,knots_x_inne
   
   #Hmm G er ikke lige invertibel :(
   coefficients<-solve(G)%*%bbZ_bar%*%as.vector(F_mat)
-  Z_opt<-matrix(coefficients[1:((g+k)*(h+l))],nrow=k+g,ncol=l+h) #The weird indexing is to extract the correct information for creating R_opt
+  z_opt<-matrix(coefficients[1:((g+k)*(h+l))],nrow=k+g,ncol=l+h) #The weird indexing is to extract the correct information for creating R_opt
   v_opt<-coefficients[((g+k)*(h+l)+1):((g+k)*(h+l)+k+g)]
   u_opt<-coefficients[((g+k)*(h+l)+k+g+1):((g+k)*(h+l)+k+g+h+l)]
   #This is unnecessary for all but creating
-  R_opt<-rbind(Z_opt,t(u_opt))
+  R_opt<-rbind(z_opt,t(u_opt))
   R_opt<-cbind(R_opt,c(v_opt,0))
   spline_hist<-t(Z_x_bar)%*%R_opt%*%Z_y_bar
   
-  
-  # spline_opt<-t(Z_x_bar_seq)%*%R_opt%*%Z_y_bar_seq
-  spline_int<- Z_x_seq%*%Z_opt%*%t(Z_y_seq)
+  spline_int<- Z_x_seq%*%z_opt%*%t(Z_y_seq)
+  spline_int<-spline_int-trapz2d(seq_x,seq_y,spline_int)/((b-a)*(d-c))
   spline_x<-Z_x_seq%*%v_opt
+  spline_x<-spline_x-trapz(seq_x,spline_x)/(b-a)
   spline_y<-Z_y_seq%*%u_opt
+  spline_y<-spline_y-trapz(seq_y,spline_y)/(d-c)
   spline_ind<-outer(spline_x,spline_y,FUN="+")
   spline_ind<-matrix(spline_ind,nrow=res,ncol=res)
   spline_opt<-spline_int+spline_ind
+  
+  #And we evaluate the residuals
+  spline_hist_clr<-t(Z_x_bar)%*%R_opt%*%Z_y_bar #The spline evaluated in the histogram bins
+  res_clr<-F_mat-spline_hist_clr #The residuals
+  spline_hist_bhs<-exp(spline_hist_clr)
+  spline_hist_bhs<-spline_hist_bhs/trapz2d(midpoints_x,midpoints_y,spline_hist_bhs)
+  res_bhs<-hist_data-spline_hist_bhs
+  
   
   #Calculate relative simplical deviance
   simp_d<-trapz2d(seq_x,seq_y,spline_int^2)
@@ -528,35 +547,32 @@ zbSpline2D<-function(x,y=NULL,alfa=0.5,rho=NULL,bin_selection=doane,knots_x_inne
   C_spline_y<-C_spline_y/trapz(seq_y,C_spline_y)
   
   #spline_x is the geometric marginal
-  structure(list("Z_spline"=spline_opt, "Z_spline_int"=spline_int, "Z_spline_ind"=spline_ind, "Z_spline_x"=spline_x,
-                 "Z_spline_y"=spline_y,
-                 "C_spline"=C_spline,
-                 "C_spline_ind"=C_spline_ind,
-                 "C_spline_int"=C_spline_int,
-                 "C_spline_x"=C_spline_x,
-                 "C_spline_y"=C_spline_y,
-                 "seq_x"=seq_x,"seq_y"=seq_y,
+  structure(list("Z_spline"=spline_opt, "Z_spline_int"=spline_int, "Z_spline_ind"=spline_ind,
+                 "Z_spline_x"=spline_x, "Z_spline_y"=spline_y,
+                 "C_spline"=C_spline, "C_spline_ind"=C_spline_ind, "C_spline_int"=C_spline_int,
+                 "C_spline_x"=C_spline_x, "C_spline_y"=C_spline_y, "seq_x"=seq_x,"seq_y"=seq_y,
                  "midpoints_x"=midpoints_x,"midpoints_y"=midpoints_y,
                  "F_mat"=F_mat,"hist_data"=hist_data,
-                 "R_opt"=R_opt,"Z_opt"=Z_opt,"v_opt"=v_opt,"u_opt"=u_opt,
+                 "residuals_clr"=res_clr,"residuals_bhs"=res_bhs,
+                 "R_opt"=R_opt,"Z_opt"=z_opt,"v_opt"=v_opt,"u_opt"=u_opt,
                  "Z_x_bar"=Z_x_bar,"Z_y_bar"=Z_y_bar,"bbZ_bar"=bbZ_bar,"G"=G,"spline_hist"=spline_hist,
                  "rho"=rho,"alfa"=alfa,
                  "sd"=simp_d,"rsd"=rel_simp_d),class="zbSpline2D")
 }
 
-cross_validate1D <- function(x, alfa_grid = seq(0.01, 1, length.out = 30), k = 3, l = 2, knots_inner = NULL) {
-  cv <- numeric(length = length(alfa_grid))
+cross_validate1D <- function(x, alfa_seq = seq(0.01, 1, length.out = 30), k = 3, l = 2, knots_inner = NULL) {
+  cv <- numeric(length = length(alfa_seq))
   for(i in seq_along(cv)) {
-    Z <- zbSpline(x, alfa = alfa_grid[i], k = k, l = l, knots_inner = knots_inner)
+    Z <- zbSpline(x, alfa = alfa_seq[i], k = k, l = l, knots_inner = knots_inner)
     y <- CLR(Z$bin_values)
     n <- length(y)
     B <- splineDesign(Z$knots, Z$bin_points, ord = Z$degree + 1, outer.ok = TRUE) # Using U and spline design to evaluate the basis
     spline <- B %*% Z$U%*%Z$z_coef
     cv[i] <- mean((y - spline)^2) / ((1 - sum(diag(Z$H)) / n)^2)
   }
-  structure(list("alfa" = alfa_grid, "cv" = cv, "optimum" = alfa_grid[which.min(cv)]), class = "zbCV")
+  structure(list("alfa" = alfa_seq, "cv" = cv, "optimum" = alfa_seq[which.min(cv)]), class = "zbCV")
 }
-cross_validate2D<-function(x,y=NULL,alfa_seq=seq(0.01,0.99,length.out=20),rho=NULL,res=100,k=2,l=2,u=1,v=1,knots_x_inner,knots_y_inner,bin_selection=doane){
+cross_validate2D<-function(x,y=NULL,knots_x_inner,knots_y_inner,alfa_seq=seq(0.01,0.99,length.out=20),rho=NULL,res=100,k=2,l=2,u=1,v=1,bin_selection=doane,range_x=NULL,range_y=NULL){
   if(!is.null(rho)){
     alfa_seq<-1/(rho+1)
   }
@@ -564,7 +580,14 @@ cross_validate2D<-function(x,y=NULL,alfa_seq=seq(0.01,0.99,length.out=20),rho=NU
   
   #We make this code just to have the dimensions to make the permutation matrix from.
   #It is very inefficient, but it works so long as no coefficients are repeated
-  Z_temp<-zbSpline2D(x,y,alfa=0.5,bin_selection=bin_selection,knots_x_inner=knots_x_inner,knots_y_inner=knots_y_inner,k=k,l=l,u=u,v=v,res=5)
+  Z_temp<-try(zbSpline2D(x,y,alfa=0.5,bin_selection=bin_selection,
+                         knots_x_inner=knots_x_inner,knots_y_inner=knots_y_inner,
+                         k=k,l=l,u=u,v=v,res=200,range_x=range_x,range_y=range_y),
+              silent=TRUE)
+  if (inherits(Z_temp, "try-error") && grepl("Lapack routine", Z_temp)) {
+    stop("Error with optimisation. Ensure knots are inside the histogram range.")
+  }
+  
   csR<-as.vector(Z_temp$R_opt)
   csZ<-c(as.vector(Z_temp$Z_opt),Z_temp$v_opt,Z_temp$u_opt)
   P<-matrix(0,nrow=length(csR),ncol=length(csZ))#We make the permutation matrix
@@ -575,7 +598,9 @@ cross_validate2D<-function(x,y=NULL,alfa_seq=seq(0.01,0.99,length.out=20),rho=NU
   
   #Compute the cross-validation scores at each alfa
   for(i in seq_along(alfa_seq)){
-    Z<-zbSpline2D(x,y,alfa_seq[i],knots_x_inner=knots_x_inner,knots_y_inner=knots_y_inner,bin_selection=bin_selection,k=k,l=l,u=u,v=v,res=res)
+    Z<-zbSpline2D(x,y,alfa_seq[i],knots_x_inner=knots_x_inner,
+                  knots_y_inner=knots_y_inner,bin_selection=bin_selection,
+                  k=k,l=l,u=u,v=v,res=res,range_x=range_x,range_y,range_y)
     H<-kronecker(t(Z$Z_y_bar),t(Z$Z_x_bar))%*%P%*%solve(Z$G)%*%Z$bbZ_bar #Definition of H
     m<-length(Z$midpoints_x)
     n<-length(Z$midpoints_y)
@@ -624,7 +649,7 @@ plot.zbSpline1D<-function(Z,what="Z-basis",include_knots=TRUE,include_hist=TRUE)
   }
   return(p)
 }
-plot.zbSpline2D<-function(Z,type="static",what="full",scale="clr",title="",plot_hist=FALSE,plot=TRUE,xlab="x",ylab="y",xlim=NA,ylim=NA){
+plot.zbSpline2D<-function(Z,type="static",what="full",scale="clr",title="",plot_hist=FALSE,plot=TRUE,xlab="x",ylab="y",xlim=NA,ylim=NA,theta=325,phi=30){
   #type can be static or interactive
   #what can be either full, independent, interaction, geom_X or geom_Y
   #plot_hist is whether we plot the underlying histogram
@@ -679,8 +704,8 @@ plot.zbSpline2D<-function(Z,type="static",what="full",scale="clr",title="",plot_
         y = Z$seq_y, 
         z = outcome, 
         col = viridis(50),
-        theta = 325,          
-        phi = 30,            
+        theta = theta,          
+        phi = phi,            
         ticktype = "detailed", 
         nticks = 3,
         xlab = xlab,          

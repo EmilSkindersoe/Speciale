@@ -334,11 +334,8 @@ bivariate<-function(x,y=NULL,alfa=0.5,rho=NULL,bin_selection=doane,knots_x_inner
   C_spline_y<-exp(spline_y)
   C_spline_y<-C_spline_y/trapz(seq_y,C_spline_y)
   
-  
-  structure(list("Z_spline"=spline_opt,
-                 "Z_spline_int"=spline_int,
-                 "Z_spline_ind"=spline_ind,
-                 "Z_spline_x"=spline_x,
+  #spline_x is the geometric marginal
+  structure(list("Z_spline"=spline_opt, "Z_spline_int"=spline_int, "Z_spline_ind"=spline_ind, "Z_spline_x"=spline_x,
                  "Z_spline_y"=spline_y,
                  "C_spline"=C_spline,
                  "C_spline_ind"=C_spline_ind,
@@ -354,7 +351,7 @@ bivariate<-function(x,y=NULL,alfa=0.5,rho=NULL,bin_selection=doane,knots_x_inner
                  "sd"=simp_d,"rsd"=rel_simp_d),class="bivariate_zbSpline")
 }
 
-plot.bivariate_zbSpline<-function(Z,type="static",what="full",scale="clr",title="",plot_hist=FALSE,plot=TRUE,xlab="x",ylab="y"){
+plot.bivariate_zbSpline<-function(Z,type="static",what="full",scale="clr",title="",plot_hist=FALSE,plot=TRUE,xlab="x",ylab="y",xlim=NA,ylim=NA){
   #type can be static or interactive
   #what can be either full, independent, interaction, geom_X or geom_Y
   #plot_hist is whether we plot the underlying histogram
@@ -383,6 +380,14 @@ plot.bivariate_zbSpline<-function(Z,type="static",what="full",scale="clr",title=
     outcome <- if (scale == "clr") Z$Z_spline_ind else Z$C_spline_ind
   }
   
+  if(is.na(xlim[1])){
+    xlim<-c(min(Z$seq_x),max(Z$seq_x))
+  }
+  if(is.na(ylim[1])){
+    ylim<-c(min(Z$seq_y),max(Z$seq_y))
+  }
+  
+  
   if (plot_hist) {
     hist_response <- if (scale == "clr") {
       Z$F_mat
@@ -406,12 +411,14 @@ plot.bivariate_zbSpline<-function(Z,type="static",what="full",scale="clr",title=
         ticktype = "detailed", 
         nticks = 3,
         xlab = xlab,          
-        ylab = ylab,          
+        ylab = ylab,
         zlab = "",          
         bty = "b2",
         colkey = FALSE,
         main = title,
-        cex.axis = 0.5
+        cex.axis = 0.5,
+        xlim=xlim,
+        ylin=ylim
       )
       if (plot_hist) {
         points3D(
@@ -478,7 +485,10 @@ cross_validate2d<-function(x,y=NULL,alfa_seq=seq(0.01,0.99,length.out=20),rho=NU
   if(!is.null(rho)){
     alfa_seq<-1/(rho+1)
   }
-  cv<-numeric(length(alfa_seq))
+  cv<-numeric(length(alfa_seq)) #Will capture the cross-validations scores
+  
+  #We make this code just to have the dimensions to make the permutation matrix from.
+  #It is very inefficient, but it works so long as no coefficients are repeated
   Z_temp<-bivariate(x,y,alfa=0.5,bin_selection=bin_selection,knots_x_inner=knots_x_inner,knots_y_inner=knots_y_inner,k=k,l=l,u=u,v=v,res=5)
   csR<-as.vector(Z_temp$R_opt)
   csZ<-c(as.vector(Z_temp$Z_opt),Z_temp$v_opt,Z_temp$u_opt)
@@ -487,9 +497,11 @@ cross_validate2d<-function(x,y=NULL,alfa_seq=seq(0.01,0.99,length.out=20),rho=NU
     sigma_i<-which(csZ==csR[i])
     P[i,sigma_i]<-1
   }
+  
+  #Compute the cross-validation scores at each alfa
   for(i in seq_along(alfa_seq)){
   Z<-bivariate(x,y,alfa_seq[i],knots_x_inner=knots_x_inner,knots_y_inner=knots_y_inner,bin_selection=bin_selection,k=k,l=l,u=u,v=v,res=res)
-  H<-kronecker(t(Z$Z_y_bar),t(Z$Z_x_bar))%*%P%*%solve(Z$G)%*%Z$bbZ_bar
+  H<-kronecker(t(Z$Z_y_bar),t(Z$Z_x_bar))%*%P%*%solve(Z$G)%*%Z$bbZ_bar #Definition of H
   m<-length(Z$midpoints_x)
   n<-length(Z$midpoints_y)
   cv[i]<-mean((Z$F_mat-Z$spline_hist)^2)/((1-sum(diag(H))/(m*n))^2)

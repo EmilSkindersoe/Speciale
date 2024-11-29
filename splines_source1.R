@@ -206,23 +206,16 @@ zbSpline<-function(x,alfa=0.5,l=2,degree=3,bin_selection=doane,knots_inner=NULL,
                  "bin_points"=bin_points,"bin_values"=bins_new,"degree"=degree,"g"=g,"alfa"=alfa),class="zbSpline")
 }
 
-plot.zbSpline<-function(Z,what="basis",include_knots=TRUE,include_hist=TRUE){
+plot.zbSpline1D<-function(Z,what="Z-basis",include_knots=TRUE,include_hist=TRUE){
   if(what=="Z-basis"){
     Z_df<-as.data.frame(Z$Z_basis)
-    Z_df[Z_df == 0] <- NA
-  }
-  else if(what=="O-basis"){
-    Z_df<-as.data.frame(Z$O)
-    Z_df[Z_df == 0] <- NA
+    Z_df[Z_df == 0] <- NA #To make sure it behaves as undefined outside the comain
   }
   else if(what=="C-basis"){
     Z_df<-as.data.frame(Z$C_basis)
   }
   else if(what=="Z-spline"){
     Z_df<-as.data.frame(Z$Z_spline)
-  }
-  else if(what=="O-spline"){
-    Z_df<-as.data.frame(Z$O%*%Z$z_coef)
   }
   else if(what=="C-spline"){
     Z_df<-as.data.frame(Z$C_spline)
@@ -239,7 +232,7 @@ plot.zbSpline<-function(Z,what="basis",include_knots=TRUE,include_hist=TRUE){
   if(include_knots==TRUE){
     p<-p+geom_vline(xintercept=Z$knots,color="gray",linetype="dashed")
   }
-  if(include_hist==TRUE & what%in% c("spline","O-spline")){ #Dont make histogram data when irrelevant
+  if(include_hist==TRUE & what=="Z-spline"){ #Dont make histogram data when irrelevant
     p<-p+geom_point(data=rep_points,mapping=aes(x=x,y=CLR(y)),shape=8,color="blue")
   }
   if(include_hist==TRUE & what=="C-spline"){
