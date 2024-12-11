@@ -8,7 +8,7 @@ library(pracma)
 set.seed(3)
 x_norm<-rnorm(20000)
 
-Z_fig5<-zbSpline(x_norm,degree=2,l=1,alfa=0.9,knots_inner=c(min(x_norm),-2,-1,0,1,2,max(x_norm)),res=1000,bin_selection=33)
+Z_fig5<-zbSpline1D(x_norm,k=2,l=1,alfa=0.9,knots_inner=c(min(x_norm),-2,-1,0,1,2,max(x_norm)),res=1000,bin_selection=33)
 #We add the clr-density of the standard normal
 Z_fig5<-cbSpline(Z_fig5,what="original")
 plot(Z_fig5,what="C-spline",include_hist=TRUE)
@@ -188,14 +188,14 @@ knots_x_inner<-c(0,0.25,0.5,0.75,1)->knots_y_inner
 
 Z2D<-bivariate(list_data,rho=0.001,bin_selection=c(10,10),knots_x_inner=knots_x_inner,knots_y_inner=knots_y_inner,k=2,l=2,u=1,v=1,res=50)
 Z2D$rsd
-par(mfrow=c(3,2),mar=c(0,0,1,0))
+par(mfrow=c(2,3),mar=c(0,0,1,0))
 
 plot(Z2D,what="full",scale="clr",plot_hist=TRUE,type="static",title="clr full")
-plot(Z2D,what="full",scale="density",plot_hist=TRUE,type="static",title="density full")
-plot(Z2D,what="independent",scale="clr",type="static","clr independent")
-plot(Z2D,what="independent",scale="density",type="static","density independent")
 plot(Z2D,what="interaction",scale="clr",type="static","clr interaction")
+plot(Z2D,what="independent",scale="clr",type="static","clr independent")
+plot(Z2D,what="full",scale="density",plot_hist=TRUE,type="static",title="density full")
 plot(Z2D,what="interaction",scale="density",type="static","density interaction")
+plot(Z2D,what="independent",scale="density",type="static","density independent")
 mtext("N=3000", outer = FALSE, cex = 1.5, line=35,side=3,adj=-0.1)
 
 

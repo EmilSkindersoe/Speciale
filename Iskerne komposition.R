@@ -32,7 +32,7 @@ process_ice_age_data <- function(data) {
     ) %>%
     # Select only the Age column and the simplified Event column
     select(age = `Age (a b2k)`, period = Event)
-  aggr<-aggregate(age ~ period, data = combined, FUN = min)
+  aggr<-aggregate(age ~ period, data = combined, FUN = max)
   return(aggr[order(aggr$age),])
 }
 ice_age_proc<-process_ice_age_data(ice_ages)
@@ -65,9 +65,24 @@ gisp_list<-split_ice(ice_age_proc,gisp)
 #x<-c(ngrip2$d18O,grip$d18O,gisp$d18O)
 #y<-c(ngrip2$Ca2,grip$Ca2,gisp$Ca2)
 
-count_observations(gisp_list,"GI")
+
+#Cold periods
+nrow(do.call(rbind,ngrip2_list[seq(2,length(ngrip2_list),by=2)]))
+nrow(do.call(rbind,grip_list[seq(2,length(ngrip2_list),by=2)]))
+nrow(do.call(rbind,gisp_list[seq(2,length(ngrip2_list),by=2)]))
+
+#Mild periods
 nrow(do.call(rbind,ngrip2_list[seq(1,length(ngrip2_list),by=2)]))
+nrow(do.call(rbind,grip_list[seq(1,length(ngrip2_list),by=2)]))
+nrow(do.call(rbind,gisp_list[seq(1,length(ngrip2_list),by=2)]))
+
+
 ngrip_cold<-do.call(rbind,ngrip2_list[seq(2,length(ngrip2_list),by=2)])
+ngrip_cold<-do.call(rbind,ngrip2_list[seq(2,length(ngrip2_list),by=2)])
+ngrip_cold<-do.call(rbind,ngrip2_list[seq(2,length(ngrip2_list),by=2)])
+
+#Mild periods
+
 x<-c(ngrip2$d18O)
 y<-c(ngrip2$Ca2)
 
@@ -81,21 +96,22 @@ ky<-seq(min(y),max(y),length.out=4)
 biv_full<-bivariate(x,y,alfa=0.9,knots_x_inner=kx,knots_y_inner=ky,k=3,l=3,u=1,v=1)
 plot(biv_full,scale="density",plot_hist=TRUE,type="interactive",title="density function of all cores and all observations",xlab="δ18O",ylab="log[Ca2+]")
 
-par(mfrow=c(3,2),mar=c(0,0,1,0))
+par(mfrow=c(2,3),mar=c(0,0,1,0))
 
 plot(biv_full,what="full",scale="clr",plot_hist=TRUE,type="static",title="clr full",xlab="δ18O",ylab="log[Ca2+]")
-plot(biv_full,what="full",scale="density",plot_hist=TRUE,type="static",title="density full",xlab="δ18O",ylab="log[Ca2+]")
-plot(biv_full,what="independent",scale="clr",type="static","clr independent",xlab="δ18O",ylab="log[Ca2+]")
-plot(biv_full,what="independent",scale="density",type="static","density independent",xlab="δ18O",ylab="log[Ca2+]")
 plot(biv_full,what="interaction",scale="clr",type="static","clr interaction",xlab="δ18O",ylab="log[Ca2+]")
+plot(biv_full,what="independent",scale="clr",type="static","clr independent",xlab="δ18O",ylab="log[Ca2+]")
+plot(biv_full,what="full",scale="density",plot_hist=TRUE,type="static",title="density full",xlab="δ18O",ylab="log[Ca2+]")
 plot(biv_full,what="interaction",scale="density",type="static","density interaction",xlab="δ18O",ylab="log[Ca2+]")
+plot(biv_full,what="independent",scale="density",type="static","density independent",xlab="δ18O",ylab="log[Ca2+]")
+
 biv_full$rsd
 
 
 
 
-x<-ngrip2_list[[2]]$d18O #Even numbers are mild periods, odds are ice ages
-y<-ngrip2_list[[2]]$Ca2
+x<-ngrip2_list[[44]]$d18O #Odd numbers are mild periods, evens are ice ages
+y<-ngrip2_list[[44]]$Ca2
 kx<-seq(min(x),max(x),length.out=4)
 ky<-seq(min(y),max(y),length.out=4)
 #cross<-cross_validate2d(x,y,knots_x_inner=kx,knots_y_inner=ky,bin_selection=doane)
@@ -103,30 +119,36 @@ ky<-seq(min(y),max(y),length.out=4)
 #Det kunne godt være at vi skal medtage en periode kun hvis dens histogramdata faktisk kan fittes
 #Og vi skal måske finde et optimalt alpha til istider og varmeperioder
 
-par(mfrow=c(1,1))
-biv_mild<-bivariate(x,y,knots_x_inner = kx,knots_y_inner=ky,bin_selection=doane,alfa=0.6,k=3,l=3,u=1,v=1)
-plot(biv_mild,scale="density",what="full",type="static",plot_hist=FALSE,title="density function during mild period (GI-1, NGRIP2)",xlab="δ18O",ylab="log[Ca2+]",xlim=c(-45,-35))
-
+par(mfrow=c(1,2),mar=c(0,1,1,0))
+biv_cold<-bivariate(x,y,knots_x_inner = kx,knots_y_inner=ky,bin_selection=doane,alfa=0.9,k=3,l=3,u=1,v=1)
+x<-ngrip2_list[[45]]$d18O #Odd numbers are mild periods, evens are ice ages
+y<-ngrip2_list[[45]]$Ca2
+kx<-seq(min(x),max(x),length.out=4)
+ky<-seq(min(y),max(y),length.out=4)
+biv_mild<-bivariate(x,y,knots_x_inner = kx,knots_y_inner=ky,bin_selection=doane,alfa=0.9,k=3,l=3,u=1,v=1)
+plot(biv_cold,scale="density",what="full",type="static",plot_hist=FALSE,title="(GS-2, NGRIP2)",xlab="δ18O",ylab="log[Ca2+]")
+plot(biv_mild,scale="density",what="full",type="static",plot_hist=FALSE,title="(GI-1, NGRIP2)",xlab="δ18O",ylab="log[Ca2+]")
 
 
 ngrip_ice<-do.call(rbind,ngrip2_list[seq(1,length(ngrip2_list),by=2)])
-x<-ngrip2_list[[3]]$d18O #Even numbers are mild periods, odds are ice ages
-y<-ngrip2_list[[3]]$Ca2
+x<-ngrip2_list[[44]]$d18O #Even numbers are mild periods, odds are ice ages
+y<-ngrip2_list[[44]]$Ca2
 kx<-seq(min(x),max(x),length.out=4)
 ky<-seq(min(y),max(y),length.out=4)
 #cross<-cross_validate2d(x,y,knots_x_inner=kx,knots_y_inner=ky,bin_selection=doane)
 #plot(cross)
 
 biv_ice<-bivariate(x,y,knots_x_inner = kx,knots_y_inner=ky,bin_selection=doane,alfa=1,k=3,l=3,u=1,v=1)
-plot(biv_ice,scale="density",what="full",type="static",plot_hist=FALSE,title="density function during cold period (GS-2, NGRIP2)",xlab="δ18O",ylab="log[Ca2+]",xlim=c(-45,-35))
+plot(biv_ice,scale="density",what="full",type="static",plot_hist=FALSE,title="density function during cold period (GS-2, NGRIP2)",xlab="δ18O",ylab="log[Ca2+]")
 #The distributions during different ages are rather dissimilar, so it would be unfair to show samples
 
 #ngrip2_rsd<-data.frame("rsd"=rep(NA,length(ngrip2_list)),"period"=rep(c("cold","mild"),length.out=length(ngrip2_list)))
 #grip_rsd<-data.frame("rsd"=rep(NA,length(grip_list)),"period"=rep(c("cold","mild"),length.out=length(grip_list)))
 #gisp_rsd<-data.frame("rsd"=rep(NA,length(gisp_list)),"period"=rep(c("cold","mild"),length.out=length(gisp_list)))
 
+View(ngrip2_list)
 fill_rsd<-function(list){
-  ice_rsd<-data.frame("rsd"=NA,"period"=rep(c("cold","mild"),length.out=length(list)))
+  ice_rsd<-data.frame("rsd"=NA,"period"=rep(c("mild","cold"),length.out=length(list))) #We start in a mild period
   for(i in 1:nrow(ice_rsd)){
     x<-list[[i]]$d18O
     y<-list[[i]]$Ca2
@@ -164,10 +186,17 @@ combined_box$source=factor(combined_box$source,levels=c("NGRIP2","GRIP","GISP"))
 ggplot(combined_box, aes(x = period, y = rsd, fill = period)) +
   geom_boxplot() +
   facet_wrap(~ source) +
-  labs(title = "20 year average",
-       x = "Period", y = "RSD") +
-  theme_minimal()+
-  ylim(c(0,1))
+  labs(
+    title = "50-Year Average",
+    x = "Period",
+    y = "RSD"
+  ) +
+  theme_minimal() +
+  ylim(0, 1) +
+  scale_fill_manual(
+    values = c("mild" = "#f8766d", "cold" = "#00bfc4"),
+    name = "Period"
+  )
 
 t.test(subset(combined_box,period=="cold")$rsd,subset(combined_box,period=="mild")$rsd)
 
@@ -181,6 +210,7 @@ x<-ice_sim$d18O
 y<-ice_sim$Ca2
 kx<-seq(min(x),max(x),length.out=4)
 ky<-seq(min(y),max(y),length.out=4)
+summary(zbSpline2D(x,y,knots_x_inner=kx,knots_y_inner=ky,k=3,l=3,u=1,v=1))
 p_ice<-perm_test(x,y,kx=kx,ky=ky,alfa=0.1,k=3,l=3,u=1,v=1,K=1000)
 p_ice
 
@@ -261,3 +291,46 @@ persp3D(
   zlim=c(0,0.21)
 )
 trapz2d(x_pred,y_pred,z_matrix)
+
+
+
+#We plot the data
+if (!requireNamespace("sf", quietly = TRUE)) install.packages("sf")
+if (!requireNamespace("ggplot2", quietly = TRUE)) install.packages("ggplot2")
+if (!requireNamespace("rnaturalearth", quietly = TRUE)) install.packages("rnaturalearth")
+if (!requireNamespace("rnaturalearthdata", quietly = TRUE)) install.packages("rnaturalearthdata")
+if (!requireNamespace("dplyr", quietly = TRUE)) install.packages("dplyr")
+
+library(sf)
+library(ggplot2)
+library(rnaturalearth)
+library(rnaturalearthdata)
+library(dplyr)
+
+# Define coordinates and labels with manual nudges
+sites <- data.frame(
+  name = c("NGRIP2", "GISP", "GRIP"),
+  lat = c(75.10, 72.58, 72.58),
+  lon = c(-42.32, -38.48, -37.64),
+  nudge_x = c(0, -5, 5),  # Adjust horizontal position
+  nudge_y = c(0.7, 0.7, 0.7) # Adjust vertical position
+)
+
+# Load Greenland map and filter specifically for Greenland
+world <- ne_countries(scale = "medium", returnclass = "sf")
+greenland <- world %>% filter(admin == "Greenland")
+
+# Create the map
+ggplot(data = greenland) +
+  geom_sf(fill = "lightblue", color = "black") +
+  geom_point(data = sites, aes(x = lon, y = lat), color = "purple", size = 1) +
+  geom_text(data = sites, aes(x = lon + nudge_x, y = lat + nudge_y, label = name), 
+            hjust = 0.5, vjust = 0.5) +
+  coord_sf(xlim = c(-75, -10), ylim = c(60, 85), expand = FALSE) +
+  theme_minimal() +
+  labs(
+    title = "Greenland Map with Selected Sites",
+    x = "Longitude",
+    y = "Latitude"
+  ) +
+  theme(panel.grid.major = element_line(color = "gray80", linetype = "dotted"))

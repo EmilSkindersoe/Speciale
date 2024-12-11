@@ -264,9 +264,9 @@ zbSpline1D<-function(x,alfa=0.5,l=2,k=3,bin_selection=doane,knots_inner=NULL,res
   
   #And we convert all of it back to probability scale
   zeta<-exp(Z) #We transform the basis
-  for(i in 1:ncol(zeta)){
-    zeta[,i]<-zeta[,i]/trapz(x_seq,zeta[,i]) #Normalise
-  }
+  #Normalising basis splines may give numerical instability
+ 
+  
   terms=matrix(NA,nrow=nrow(zeta),ncol=ncol(zeta))
   for(i in 1:ncol(zeta)){ #Create all of the terms for the spline composition
     terms[,i]<-zeta[,i]^z_coef[i] #Perform powering on the terms
@@ -556,8 +556,15 @@ zbSpline2D<-function(x,y=NULL,knots_x_inner,knots_y_inner,alfa=0.5,rho=NULL,bin_
                  "residuals_clr"=res_clr,"residuals_bhs"=res_bhs,
                  "R_opt"=R_opt,"Z_opt"=z_opt,"v_opt"=v_opt,"u_opt"=u_opt,
                  "Z_x_bar"=Z_x_bar,"Z_y_bar"=Z_y_bar,"bbZ_bar"=bbZ_bar,"G"=G,"spline_hist"=spline_hist,
-                 "rho"=rho,"alfa"=alfa,
+                 "rho"=rho,"alfa"=alfa, "spline_max"=which(C_spline==max(C_spline),arr.ind=TRUE),
                  "sd"=simp_d,"rsd"=rel_simp_d),class="zbSpline2D")
+}
+
+summary.zbSpline2D <- function(Z) {
+  cat("Spline evaluated over the intervals x in (", min(Z$seq_x), ",", max(Z$seq_x), 
+      ") and y in (", min(Z$seq_y), ",", max(Z$seq_y), ")\n")
+  cat("RSD:", Z$rsd, "\n")
+  cat("Arg max:", Z$seq_x[Z$spline_max[1]],Z$seq_x[Z$spline_max[2]], "\n")
 }
 
 cross_validate1D <- function(x, alfa_seq = seq(0.01, 1, length.out = 30), k = 3, l = 2, knots_inner = NULL) {
@@ -615,7 +622,7 @@ cross_validate2D<-function(x,y=NULL,knots_x_inner,knots_y_inner,alfa_seq=seq(0.0
 plot.zbSpline1D<-function(Z,what="Z-basis",include_knots=TRUE,include_hist=TRUE){
   if(what=="Z-basis"){
     Z_df<-as.data.frame(Z$Z_basis)
-    Z_df[Z_df == 0] <- NA #To make sure it behaves as undefined outside the comain
+    Z_df[Z_df == 0] <- NA #To make sure it behaves as undefined outside the domain
   }
   else if(what=="C-basis"){
     Z_df<-as.data.frame(Z$C_basis)
@@ -649,7 +656,7 @@ plot.zbSpline1D<-function(Z,what="Z-basis",include_knots=TRUE,include_hist=TRUE)
   }
   return(p)
 }
-plot.zbSpline2D<-function(Z,type="static",what="full",scale="clr",title="",plot_hist=FALSE,plot=TRUE,xlab="x",ylab="y",xlim=NA,ylim=NA,theta=325,phi=30){
+plot.zbSpline2D<-function(Z,type="static",what="full",scale="clr",title="",plot_hist=FALSE,plot=TRUE,xlab="x",ylab="y",xlim=NA,ylim=NA,theta=325,phi=30,point_col="black"){
   #type can be static or interactive
   #what can be either full, independent, interaction, geom_X or geom_Y
   #plot_hist is whether we plot the underlying histogram
@@ -724,7 +731,7 @@ plot.zbSpline2D<-function(Z,type="static",what="full",scale="clr",title="",plot_
           y = grid$y,
           z = as.vector(hist_response),
           add = TRUE,
-          col = "black",
+          col = point_col,
           pch = 19,
           cex = 0.5
         )

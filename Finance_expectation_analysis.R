@@ -1,8 +1,9 @@
 source("splines_combined.R")
 library(openxlsx)
+library(microbenchmark)
 #We read all the data
 #Per construction of the functions, a row is an observation from x and a column is an observation from y.
-#All integrals are divided by the domain which they are taken over, in order to create a probability base measure
+#All integrals are divided by the domain which they are taken over, in order to create a probability base measure.
 
 
 fin20<-read.xlsx("frbny-sce-public-microdata-latest.xlsx",colNames=TRUE,rows=2:60084,cols=c(1,2,14,16,19,117,119,122))
@@ -11,11 +12,16 @@ fin13<-read.xlsx("FRBNY-SCE-Public-Microdata-Complete-13-16.xlsx",colNames=TRUE,
 
 fin_total<-rbind(fin13,fin17,fin20)
 fin_total<-na.omit(fin_total)
+
+#saveRDS(fin_total,"fin_total")
+fin_total<-readRDS("fin_total")
 rm(fin13,fin17,fin20) #They take up too much memory
 gc()
 
 x<-fin_total$Q9_cent50
 y<-fin_total$C1_cent50
+
+dat<-data.frame("x"=x,"y"=y)
 
 kx<-c(-36,seq(-25,25,by=10),36)->ky
 
@@ -23,9 +29,18 @@ c<-cross_validate2D(x,y,alfa_seq=seq(0.0001,0.0008,length.out=10),bin_selection=
 plot(c)
 c$optimum
 
+m=microbenchmark(zbSpline2D(x,y,alfa=0.0006,knots_x_inner=kx,knots_y_inner=ky,k=3,l=3,u=2,v=2),kde2d(x,y,n=100),times=10)
+autoplot(m)
+
 test<-zbSpline2D(x,y,alfa=0.0006,knots_x_inner=kx,knots_y_inner=ky,k=3,l=3,u=2,v=2)
+
+summary(test)
+cor.test(x,y)
 par(mfrow=c(1,1),mar=c(0,0,1,0))
-plot(test,what="geom_Y",scale="density",type="static",theta=125,xlab="inflation",ylab="housing price",title="C-spline density")
+plot(test,what="full",scale="density",type="static",plot_hist=TRUE,theta=200,phi=0,xlab="inflation",ylab="housing price",title="C-spline density",point_col="gray40")
+
+
+
 test$midpoints_y
 #Prøv også med kde2d
 dens<-kde2d(x,y,n=100)
@@ -34,8 +49,8 @@ persp3D(x = dens$x,
         y = dens$y, 
         z = dens$z, 
         col = viridis(50),
-        theta = 125,          
-        phi = 30,            
+        theta = 200,          
+        phi = 0,            
         ticktype = "detailed", 
         nticks = 3,
         xlab="inflation",
@@ -52,19 +67,25 @@ points3D(
   y = grid$y,
   z = as.vector(hist_data),
   add = TRUE,
-  col = "black",
+  col = "gray40",
   pch = 19,
   cex = 0.5
 )
 
 
-par(mfrow=c(3,2),mar=c(0,0,1,0))
+
+#Playing with depth statistics
+Z_spline<-test$Z_spline
+d<-depth(t(Z_spline),Z_spline)
+depthMedian(d)
+
+par(mfrow=c(2,3),mar=c(0,0,1,0))
 
 plot(test,what="full",scale="clr",plot_hist=TRUE,type="static",title="clr full",xlab="inflation",ylab="housing p")
-plot(test,what="full",scale="density",plot_hist=TRUE,type="static",title="density full",xlab="inflation",ylab="housing p")
 plot(test,what="independent",scale="clr",type="static","clr independent",xlab="inflation",ylab="housing p")
-plot(test,what="independent",scale="density",type="static","density independent",xlab="inflation",ylab="housing p")
 plot(test,what="interaction",scale="clr",type="static","clr interaction",xlab="inflation",ylab="housing p")
+plot(test,what="full",scale="density",plot_hist=TRUE,type="static",title="density full",xlab="inflation",ylab="housing p")
+plot(test,what="independent",scale="density",type="static","density independent",xlab="inflation",ylab="housing p")
 plot(test,what="interaction",scale="density",type="static","density interaction",xlab="inflation",ylab="housing p")
 
 perm_test(fin_total$Q9_cent50,fin_total$C1_cent50,kx,ky,alfa=0.00002)
@@ -153,52 +174,165 @@ ggplot(rsd_data, aes(x = month_along, y = RSD)) +
   theme(axis.text.x = element_text(angle = 45, hjust = 1)) # Rotate x-axis labels
 
 
-
-integrate_over_x <- function(fx, x_values) {
-  trapz(x_values, fx)
-}
-
 spline_test<-list_of_splines[[1]]
 plot(colSums(spline_test$C_spline),main="arithmetic marginal") #colsums takes the sums over all columns for a row
 plot(spline_test$C_spline_x,main="geometric marginal")
 
 #This function help with integrating out some axis
-integrate_over_axis <- function(M, x_values, margin = 1, method = "trapz") {
+integrate_over_axis <- function(M, x_values, margin = 1) {
   # M: Matrix of function values
   # x_values: Vector of variable values corresponding to the margin
-  # margin: 1 for rows (integrate over x), 2 for columns (integrate over y)
-  # method: Numerical integration method ("trapz", "simpson")
+  # margin: 2 for rows (integrate over x), 1 for columns (integrate over y)
+
   
   # Load necessary package
   if (!requireNamespace("pracma", quietly = TRUE)) {
     stop("Package 'pracma' is required. Please install it using install.packages('pracma').")
   }
-
-  if (length(x_values) != dim(M)[margin]) {
-    stop("Length of x_values must match the dimension of M over which to integrate.")
-  }
-  
-  # Select integration function based on the specified method
-  integration_function <- switch(method,
-                                 trapz = pracma::trapz,
-                                 simpson = pracma::simps,
-                                 stop("Unsupported integration method. Use 'trapz' or 'simpson'."))
   
   # Define the integration function to apply
   integrate_func <- function(f_values) {
-    integration_function(x_values, f_values)
+    trapz(x_values, f_values)
   }
   
-  # Determine the MARGIN parameter for apply (opposite of the integration axis)
-  apply_margin <- ifelse(margin == 1, 2, 1)
-  
   # Apply the integration function over the specified axis
-  result <- apply(M, MARGIN = apply_margin, integrate_func)
+  result <- apply(M, MARGIN = margin, integrate_func)
   
   return(result)
 }
+g_x<-test$C_spline_x
+g_y<-test$C_spline_y
+a_x<-integrate_over_axis(test$C_spline,test$seq_x,margin=1)
+a_y<-integrate_over_axis(test$C_spline,test$seq_y,margin=2) #Since y is a column, we integrate over the row
+trapz(test$seq_x,a_x_2$C_spline)
 
-new_clr_marg<-integrate_over_axis(spline_test$Z_spline_int,x_seq,margin=2)
+plot(test$seq_x,integrate_over_axis(test$Z_spline_ind,test$seq_x,margin=1))
+plot(test$Z_spline_x)
+
+a_x_2<-zbSpline1D(x,alfa=0.0006,l=2,k=3,knots_inner=kx,res=200)
+a_y_2<-zbSpline1D(y,alfa=0.0006,l=2,k=3,knots_inner=kx,res=200)
+
+
+marg_data<-data.frame("geom_x"=g_x,"geom_y"=g_y,"arithmetic_x"=a_x,"arithmetic_y"=a_y,"x"=test$seq_x)
+marg_data_long <- marg_data %>%
+  pivot_longer(
+    cols = -x,
+    names_to = c("method", "subscript"),
+    names_sep = "_",
+    values_to = "value"
+  )%>%
+  mutate(
+    variable = case_when(
+      subscript == "x" ~ "Inflation",
+      subscript == "y" ~ "Change in Housing Price"
+    )
+  )
+
+ggplot(marg_data_long, aes(x = x, y = value, color = variable, linetype = method)) +
+  geom_line(linewidth=1) +
+  labs(title = "",
+       x = "Index",
+       y = "Value",
+       color = "Variable",
+       linetype = "Method") +
+  ylab("density")+xlab("Value")+
+  theme_minimal()
+
+
+#Konverterer geom_X to fda
+library(fda)
+library(fda.usc)
+#Update the plotting function
+
+par(mfrow=c(1,1))
+View(list_of_splines)
+x_seq<-list_of_splines[[1]]$seq_x
+y_seq<-list_of_splines[[2]]$seq_y
+obs_geom_x<-do.call(cbind, lapply(list_of_splines, function(x) x$C_spline_x))
+obs_geom_y<-do.call(cbind, lapply(list_of_splines, function(x) x$C_spline_y))
+obs_dens<-lapply(list_of_splines, function(x) x$C_spline)
+obs_arith_x<-matrix(0,nrow=nrow(obs_geom_x),ncol=ncol(obs_geom_x))->obs_arith_y
+for(i in 1:ncol(obs_arith_x)){
+  obs_arith_x[,i]<-integrate_over_axis(obs_dens[[i]],x_seq,margin=1)
+  obs_arith_y[,i]<-integrate_over_axis(obs_dens[[i]],y_seq,margin=2)
+}
+
+
+fd<-fdata(t(obs_geom_x),list_of_splines[[1]]$seq_x)
+depth_obj<-depth.FM(fd,trim=0.5,dfunc="FM1")
+plot(dm)
+
+plot_depth<-function(depth_obj,xlab="x",main="",type="static"){
+  x_vals<-depth_obj$fdataobj$argvals
+  y_vals<-depth_obj$fdataobj$data
+  set.seed(2)
+  random_order <- sample(1:nrow(y_vals))
+  
+
+  
+  if(type=="static"){
+    plot_data <- data.frame(
+      x = rep(x_vals, times = nrow(y_vals)),
+      y = as.vector(t(y_vals)),
+      curve_id = rep(random_order, each = length(x_vals))
+    )
+    
+    med_data<-data.frame("x"=x_vals,"y"=as.numeric(depth_obj$median$data))
+    
+    p<-ggplot()+geom_line(data=plot_data,mapping=aes(x=x,y=y,group=curve_id,color=curve_id),alpha=0.5)+
+      geom_line(data=med_data,mapping=aes(x=x,y=y),color="red",size=1)+
+      scale_color_gradient(low = "gray90", high = "gray10")+xlab(xlab)+ylab("belief density")+
+      theme_minimal()+theme(legend.position="none")+ggtitle(main)
+  }
+  if(type=="int"){
+    plot_data <- data.frame(
+      x = rep(x_vals, times = nrow(y_vals)),
+      y = as.vector(t(y_vals)),
+      curve_id = rep(1:nrow(y_vals), each = length(x_vals))
+    )
+    
+    med_data<-data.frame("x"=x_vals,"y"=as.numeric(depth_obj$median$data))
+    
+    p<-plot_ly() %>%
+      add_trace(
+        data = plot_data,
+        x = ~x,
+        y = ~y,
+        color = ~factor(curve_id),
+        type = 'scatter',
+        mode = 'lines',
+        hoverinfo = 'text',
+        text = ~paste("Curve ID:", curve_id),
+        opacity = 0.5,
+        showlegend = FALSE
+      ) %>%
+      add_trace(
+        data = med_data,
+        x = ~x,
+        y = ~y,
+        type = 'scatter',
+        mode = 'lines',
+        line = list(color = 'red', width = 2),
+        name = 'Median'
+      ) %>%
+      layout(
+        title = main,
+        xaxis = list(title = xlab),
+        yaxis = list(title = "belief density")
+      )
+  }
+  return(p)
+}
+plot_depth(depth.FM(fdata(t(obs_arith_y),y_seq),trim=0),xlab="Inflation",main="Geometric",type="int")
+total_months[[118]]
+
+p1<-plot_depth(depth.FM(fdata(t(obs_geom_x),x_seq),trim=0),xlab="Inflation",main="Geometric")
+p2<-plot_depth(depth.FM(fdata(t(obs_geom_y),y_seq),trim=0),xlab="Housing price",main="Geometric")
+p3<-plot_depth(depth.FM(fdata(t(obs_arith_x),x_seq),trim=0),xlab="Inflation",main="Arithmetic")
+p4<-plot_depth(depth.FM(fdata(t(obs_arith_y),y_seq),trim=0),xlab="Housing price",main="Arithmetic")
+grid.arrange(p1,p2,p3,p4)
+
+which(obs_geom_y==max(obs_geom_y),arr.ind=TRUE)
 
 plot(x_seq,new_clr_marg/max(new_clr_marg))
 plot(x_seq,spline_test$Z_spline_x)
@@ -231,8 +365,8 @@ calc_test<-function(list_splines){
     
     #This is not the same as the clr-marginal according to the spline because we integrate over the entire spline
     #and not just the independent part
-    g_marginal_x_clr<-integrate_over_axis(sim_Z,x_seq,margin=2)/(norm_cons_x) 
-    g_marginal_y_clr<-integrate_over_axis(sim_Z,y_seq,margin=1)/norm_cons_y
+    g_marginal_x_clr<-integrate_over_axis(sim_Z,x_seq,margin=1)/(norm_cons_x) 
+    g_marginal_y_clr<-integrate_over_axis(sim_Z,y_seq,margin=2)/norm_cons_y
     g_marginal_x<-exp(g_marginal_x_clr)/trapz(x_seq,exp(g_marginal_x_clr))
     D_X<-sqrt(trapz(x_seq,(g_marginal_x_clr-a_marginal_x_clr)^2))
     D_Y<-sqrt(trapz(x_seq,(g_marginal_y_clr-a_marginal_y_clr)^2))
@@ -272,3 +406,9 @@ plot_T<-zbSpline1D(data.frame(hist_T$mids,hist_T$counts))
 hist(T_new,xlim=c(min(hist_T$breaks),T_obs+1),probability=T,main="Histogram of simulated T statistics",xlab="T")
 abline(v=T_obs,lty=2)
 lines(plot_T$x_seq,plot_T$C_spline)
+
+x_s<-zbSpline1D(x,knots_inner=kx)
+exp(x_s$Z_basis)
+x_s$C_basis
+plot(x_s,what="C-spline")
+plot(test,what="geom_X",scale="density")

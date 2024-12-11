@@ -112,7 +112,7 @@ persp3D(x=x_vals,y=y_vals,z=z_vals,col=viridis(50),ticktype="detailed",colkey=F,
 
 
 
-sample_asym<-gen_asym(1000,rho=0.7)
+sample_asym<-gen_asym(1000,rho=1)
 x<-sample_asym$x
 y<-sample_asym$y
 
@@ -135,23 +135,24 @@ biv_asym$rsd
 cv<-cross_validate2d(x,y,knots_x_inner=kx,knots_y_inner=ky,k=4,l=5,u=3,v=1)
 plot(cv)
 
+par(mfrow=c(2,3),mar=c(0,0,1,0))
 jpeg("clr_full.jpeg")
-plot(biv_asym,scale="clr",what="full",type="static",plot_hist=TRUE,title="clr full density")
+plot(biv_asym,scale="clr",what="full",type="static",plot_hist=TRUE,title="clr full")
 dev.off()
 jpeg("density_full.jpeg")
-plot(biv_asym,scale="density",what="full",type="static",plot_hist=TRUE,title="BS full density")
+plot(biv_asym,scale="clr",what="interaction",type="static",plot_hist=TRUE,title="clr interaction")
 dev.off()
 jpeg("clr_interaction.jpeg")
-plot(biv_asym,scale="clr",what="interaction",type="static",plot_hist=FALSE,title="clr interaction density")
+plot(biv_asym,scale="clr",what="independent",type="static",plot_hist=FALSE,title="clr independent")
 dev.off()
 jpeg("density_interaction.jpeg")
-plot(biv_asym,scale="density",what="interaction",type="static",plot_hist=FALSE,title="BS interaction density")
+plot(biv_asym,scale="density",what="full",type="static",plot_hist=FALSE,title="density full")
 dev.off()
 jpeg("clr_independent.jpeg")
-plot(biv_asym,scale="clr",what="independent",type="static",plot_hist=FALSE,title="clr independent density")
+plot(biv_asym,scale="density",what="interaction",type="static",plot_hist=FALSE,title="density interaction")
 dev.off()
 jpeg("density_independent.jpeg")
-plot(biv_asym,scale="density",what="independent",type="static",plot_hist=FALSE,title="BS independent density")
+plot(biv_asym,scale="density",what="independent",type="static",plot_hist=FALSE,title="density independent")
 dev.off()
 
 plot(biv_asym,what="geom_X",scale="density",plot_hist=TRUE)
