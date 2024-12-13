@@ -118,12 +118,10 @@ get_neighbors <- function(mat, i, j) {
 } #get neighbours of index i,j in a matrix
 impute_zeros <- function(counts) {
   counts <- as.matrix(counts)
-  
   # Continue the process until there are no zeros left
   while(any(counts == 0)) {
     counts_new <- counts
     zero_positions <- which(counts == 0, arr.ind = TRUE)
-    
     # Iterate over each zero entry
     for(k in 1:nrow(zero_positions)) {
       i <- zero_positions[k, 1]
@@ -136,7 +134,6 @@ impute_zeros <- function(counts) {
         gm <- exp(mean(log(non_zero_neighbors)))*2/3
         counts_new[i, j] <- gm
       }
-      # Else, leave it as zero for now
     }
     counts <- counts_new
   }
@@ -282,7 +279,7 @@ zbSpline1D<-function(x,alfa=0.5,l=2,k=3,bin_selection=doane,knots_inner=NULL,res
                  "U"=U,"H"=H,"M"=M,"Sl"=Sl,"K"=K,"knots"=knots,"x"=x,"x_seq"=x_seq,
                  "bin_points"=bin_points,"bin_values"=bins_new,"degree"=k,"g"=g,"alfa"=alfa),class="zbSpline1D")
 }
-zbSpline2D<-function(x,y=NULL,knots_x_inner,knots_y_inner,alfa=0.5,rho=NULL,bin_selection=doane,k=3,l=3,u=2,v=2,res=200,range_x=NULL,range_y=NULL){
+zbSpline2D<-function(x,y=NULL,knots_x_inner,knots_y_inner,alfa=0.5,rho=NULL,bin_selection=doane,k=3,l=3,u=2,v=2,res=200,range_x=NULL,range_y=NULL,calc_dens=TRUE){
   #x,y are either vectors of observation (x,y) or x is a list of length 3 with the first two being the midpoints and the third being a matrix of bin_values
   #alfa is the smoothing parameter used in Machalova21 and Hron23, and is converted to the smoothing parameter of skorna unless this is specified directly
   #bin_selection is either a function or numeric. In the first case it will calculate the number of bins by the specified rule-of-thumb. In the second it will use the provided number of bins.
@@ -291,6 +288,7 @@ zbSpline2D<-function(x,y=NULL,knots_x_inner,knots_y_inner,alfa=0.5,rho=NULL,bin_
   #k,l are the degrees of the basis splines
   #u,v are the orders of derivatives
   #res is what resolution the densities are evaluated in
+  #calc_dens is true or false. If false, can save some computational time
   if(is.null(rho)){
     rho=(1-alfa)/alfa
   }
@@ -302,7 +300,7 @@ zbSpline2D<-function(x,y=NULL,knots_x_inner,knots_y_inner,alfa=0.5,rho=NULL,bin_
     hist_data<-x[[3]]
     if(any(hist_data==0)){
       warning("Some hist_data were 0, imputing...")
-      hist_data<-impute_zeros(hist_data)
+        hist_data<-impute_zeros(hist_data)
     }
     F_mat<-CLR(hist_data)
   } else if (class(x)=="numeric" & class(y)=="numeric"){ #Converts to histogram data
@@ -337,10 +335,11 @@ zbSpline2D<-function(x,y=NULL,knots_x_inner,knots_y_inner,alfa=0.5,rho=NULL,bin_
     counts<-matrix(counts,nrow=m,ncol=n)
     
     #Impute the counts
-    hist_data<-impute_zeros(counts)
+    
+      hist_data<-impute_zeros(counts)
+    
     F_mat<-CLR(hist_data)
-  }
-  else {stop("Error: Data must be either histogram data x or numerics (x,y).")}
+  }else {stop("Error: Data must be either histogram data x or numerics (x,y).")}
   
   #We make the knot sequence
   #We start with assuming that the inner knots are provided
@@ -535,29 +534,51 @@ zbSpline2D<-function(x,y=NULL,knots_x_inner,knots_y_inner,alfa=0.5,rho=NULL,bin_
   
   #And we map it back to density
   #This should be done via the B^2 basis functions, but I won't focus too much on it
-  C_spline<-exp(spline_opt)
-  C_spline<-C_spline/trapz2d(seq_x,seq_y,C_spline)
-  C_spline_ind<-exp(spline_ind)
-  C_spline_ind<-C_spline_ind/trapz2d(seq_x,seq_y,C_spline_ind)
-  C_spline_int<-exp(spline_int)
-  C_spline_int<-C_spline_int/trapz2d(seq_x,seq_y,C_spline_int)
-  C_spline_x<-exp(spline_x)
-  C_spline_x<-C_spline_x/trapz(seq_x,C_spline_x)
-  C_spline_y<-exp(spline_y)
-  C_spline_y<-C_spline_y/trapz(seq_y,C_spline_y)
+  if(calc_dens){
+    C_spline<-exp(spline_opt)
+    C_spline<-C_spline/trapz2d(seq_x,seq_y,C_spline)
+    C_spline_ind<-exp(spline_ind)
+    C_spline_ind<-C_spline_ind/trapz2d(seq_x,seq_y,C_spline_ind)
+    C_spline_int<-exp(spline_int)
+    C_spline_int<-C_spline_int/trapz2d(seq_x,seq_y,C_spline_int)
+    C_spline_x<-exp(spline_x)
+    C_spline_x<-C_spline_x/trapz(seq_x,C_spline_x)
+    C_spline_y<-exp(spline_y)
+    C_spline_y<-C_spline_y/trapz(seq_y,C_spline_y)
+  }
+
   
-  #spline_x is the geometric marginal
-  structure(list("Z_spline"=spline_opt, "Z_spline_int"=spline_int, "Z_spline_ind"=spline_ind,
-                 "Z_spline_x"=spline_x, "Z_spline_y"=spline_y,
-                 "C_spline"=C_spline, "C_spline_ind"=C_spline_ind, "C_spline_int"=C_spline_int,
-                 "C_spline_x"=C_spline_x, "C_spline_y"=C_spline_y, "seq_x"=seq_x,"seq_y"=seq_y,
-                 "midpoints_x"=midpoints_x,"midpoints_y"=midpoints_y,
-                 "F_mat"=F_mat,"hist_data"=hist_data,
-                 "residuals_clr"=res_clr,"residuals_bhs"=res_bhs,
-                 "R_opt"=R_opt,"Z_opt"=z_opt,"v_opt"=v_opt,"u_opt"=u_opt,
-                 "Z_x_bar"=Z_x_bar,"Z_y_bar"=Z_y_bar,"bbZ_bar"=bbZ_bar,"G"=G,"spline_hist"=spline_hist,
-                 "rho"=rho,"alfa"=alfa, "spline_max"=which(C_spline==max(C_spline),arr.ind=TRUE),
-                 "sd"=simp_d,"rsd"=rel_simp_d),class="zbSpline2D")
+  if (calc_dens) {
+    C_spline <- exp(spline_opt)
+    C_spline <- C_spline / trapz2d(seq_x, seq_y, C_spline)
+    
+    C_spline_ind <- exp(spline_ind)
+    C_spline_ind <- C_spline_ind / trapz2d(seq_x, seq_y, C_spline_ind)
+    
+    C_spline_int <- exp(spline_int)
+    C_spline_int <- C_spline_int / trapz2d(seq_x, seq_y, C_spline_int)
+    
+    C_spline_x <- exp(spline_x)
+    C_spline_x <- C_spline_x / trapz(seq_x, C_spline_x)
+    
+    C_spline_y <- exp(spline_y)
+    C_spline_y <- C_spline_y / trapz(seq_y, C_spline_y)
+  }
+  
+  res_list <- list(Z_spline=spline_opt,Z_spline_int=spline_int,Z_spline_ind=spline_ind,
+                   Z_spline_x=spline_x,Z_spline_y=spline_y,
+                   seq_x=seq_x,seq_y=seq_y,midpoints_x=midpoints_x,midpoints_y=midpoints_y,
+                   F_mat=F_mat,hist_data=hist_data,residuals_clr=res_clr,residuals_bhs=res_bhs,
+                   R_opt=R_opt,Z_opt=z_opt,v_opt=v_opt,u_opt=u_opt,Z_x_bar=Z_x_bar,Z_y_bar=Z_y_bar,
+                   bbZ_bar=bbZ_bar,G=G,spline_hist=spline_hist,rho=rho,alfa=alfa,sd=simp_d,rsd=rel_simp_d)
+  
+  if(calc_dens){
+    res_list <- c(res_list,list(C_spline=C_spline,C_spline_ind=C_spline_ind,C_spline_int=C_spline_int,
+                                C_spline_x=C_spline_x,C_spline_y=C_spline_y,
+                                spline_max=which(C_spline==max(C_spline),arr.ind=TRUE)))
+  }
+  
+  structure(res_list,class="zbSpline2D")
 }
 
 summary.zbSpline2D <- function(Z) {
@@ -579,21 +600,20 @@ cross_validate1D <- function(x, alfa_seq = seq(0.01, 1, length.out = 30), k = 3,
   }
   structure(list("alfa" = alfa_seq, "cv" = cv, "optimum" = alfa_seq[which.min(cv)]), class = "zbCV")
 }
-cross_validate2D<-function(x,y=NULL,knots_x_inner,knots_y_inner,alfa_seq=seq(0.01,0.99,length.out=20),rho=NULL,res=100,k=2,l=2,u=1,v=1,bin_selection=doane,range_x=NULL,range_y=NULL){
-  if(!is.null(rho)){
-    alfa_seq<-1/(rho+1)
-  }
+cross_validate2D<-function(x,y=NULL,knots_x_inner,knots_y_inner,alfa_seq=seq(0.01,0.99,length.out=20),res=100,k=2,l=2,u=1,v=1,bin_selection=doane,range_x=NULL,range_y=NULL){
   cv<-numeric(length(alfa_seq)) #Will capture the cross-validations scores
   
   #We make this code just to have the dimensions to make the permutation matrix from.
   #It is very inefficient, but it works so long as no coefficients are repeated
   Z_temp<-try(zbSpline2D(x,y,alfa=0.5,bin_selection=bin_selection,
                          knots_x_inner=knots_x_inner,knots_y_inner=knots_y_inner,
-                         k=k,l=l,u=u,v=v,res=200,range_x=range_x,range_y=range_y),
+                         k=k,l=l,u=u,v=v,res=200,range_x=range_x,range_y=range_y,calc_dens=FALSE),
               silent=TRUE)
   if (inherits(Z_temp, "try-error") && grepl("Lapack routine", Z_temp)) {
     stop("Error with optimisation. Ensure knots are inside the histogram range.")
   }
+  
+  dat<-list(Z_temp$midpoints_x,Z_temp$midpoints_y,Z_temp$hist_data)
   
   csR<-as.vector(Z_temp$R_opt)
   csZ<-c(as.vector(Z_temp$Z_opt),Z_temp$v_opt,Z_temp$u_opt)
@@ -602,12 +622,12 @@ cross_validate2D<-function(x,y=NULL,knots_x_inner,knots_y_inner,alfa_seq=seq(0.0
     sigma_i<-which(csZ==csR[i])
     P[i,sigma_i]<-1
   }
-  
   #Compute the cross-validation scores at each alfa
+  #Can reuse the same histogram as earlier
   for(i in seq_along(alfa_seq)){
-    Z<-zbSpline2D(x,y,alfa_seq[i],knots_x_inner=knots_x_inner,
+    Z<-zbSpline2D(x=dat,alfa=alfa_seq[i],knots_x_inner=knots_x_inner,
                   knots_y_inner=knots_y_inner,bin_selection=bin_selection,
-                  k=k,l=l,u=u,v=v,res=res,range_x=range_x,range_y,range_y)
+                  k=k,l=l,u=u,v=v,res=res,range_x=range_x,range_y,range_y,calc_dens=FALSE)
     H<-kronecker(t(Z$Z_y_bar),t(Z$Z_x_bar))%*%P%*%solve(Z$G)%*%Z$bbZ_bar #Definition of H
     m<-length(Z$midpoints_x)
     n<-length(Z$midpoints_y)
@@ -792,26 +812,39 @@ plot.zbCV<-function(cv){
 }
 
 
-perm_test<-function(x,y,kx,ky,alfa=1,bin_selection=doane,k=2,l=2,u=1,v=1,res=100,K=200){
-  rsd_true<-zbSpline2D(x,y,alfa=alfa,bin_selection=bin_selection,knots_x_inner=kx,knots_y_inner=ky,k=k,l=l,u=u,v=v,res=res)$rsd
+perm_test<-function(x,y,kx,ky,alfa_seq=seq(0.01,1,length.out=10),bin_selection=doane,k=2,l=2,u=1,v=1,res=100,K=500){
+  cv_true<-cross_validate2D(x,y,knots_x_inner=kx,knots_y_inner=ky,alfa_seq=alfa_seq,k=k,l=l,u=u,v=v)
+  alfa_true<-cv_true$optimum
+  true_spline<-zbSpline2D(x,y,alfa=alfa_true,bin_selection=bin_selection,
+                       knots_x_inner=kx,knots_y_inner=ky,
+                       k=k,l=l,u=u,v=v,res=res,calc_dens=FALSE)
+  rsd_true<-true_spline$rsd
+  
+  x_new <- sample(x, replace = FALSE)
+  y_new <- sample(y, replace = FALSE)
+  kx_new <- seq(min(x_new), max(x_new), length.out = length(kx))
+  ky_new <- seq(min(y_new), max(y_new), length.out = length(ky))
+  
+  cv_perm<-cross_validate2D(x_new,y_new,knots_x_inner=kx_new,
+                            knots_y_inner=ky_new,alfa_seq=alfa_seq,
+                            k=k,l=l,u=u,v=v)
+  alfa_perm<-cv_perm$optimum
+  
   rsd_vec<-numeric(K)
   for (i in 1:K) {
     repeat {  # Use repeat to retry in case of an error
-      # Try-catch block
       tryCatch({
-        # Sample data
+        # permute data and make knots
         x_new <- sample(x, replace = FALSE)
         y_new <- sample(y, replace = FALSE)
-        
-        # Define knot sequences
         kx_new <- seq(min(x_new), max(x_new), length.out = 4)
         ky_new <- seq(min(y_new), max(y_new), length.out = 4)
         
         # Run the bivariate function and store result
-        sim_rsd <- zbSpline2D(x_new, y_new, alfa = alfa, bin_selection = bin_selection, 
+        sim_rsd <- zbSpline2D(x_new, y_new, alfa = alfa_perm, bin_selection = bin_selection, 
                              knots_x_inner = kx_new, knots_y_inner = ky_new, 
-                             k = k, l = l, u = u, v = v, res = res)
-        rsd_vec[i] <- sim_rsd$rsd  # Save result
+                             k = k, l = l, u = u, v = v, res = res,calc_dens=FALSE)
+        rsd_vec[i] <- sim_rsd$rsd
         
         break  # Exit repeat if no error occurs
         
@@ -826,5 +859,5 @@ perm_test<-function(x,y,kx,ky,alfa=1,bin_selection=doane,k=2,l=2,u=1,v=1,res=100
     }
   }
   p<-length(which(rsd_vec>=rsd_true))/K
-  return(p)
+  return(list("p_val"=p,"alfa_true"=alfa_true,"alfa_perm"=alfa_perm,"rsd_true"=rsd_true,"rsd_perms"=rsd_vec,"hist"=true_spline$hist_data))
 }

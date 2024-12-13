@@ -8,17 +8,18 @@ logistic_bivariate(0,0,0)
 #We consider intervals [-5,5]
 gen_sym<-function(n,rho=0){
   i<-1
-  M<-1/16 #This just needs to be the maximum, since we do not multiply by the constant g
+  M<-2/16 #This just needs to be the maximum, since we do not multiply by the constant g
   sample<-data.frame("x"=NA,"y"=NA)
   while(i<=n){
     X<-runif(1,min=-5,max=5); Y<-runif(1,min=-5,max=5); U<-runif(1)
-    if(U<=logistic_bivariate(X,Y,rho)/(M)){
+    if(U<=logistic_bivariate(X,Y,rho)/(M/100)){ #Bør vi ikke have M*1/100 for at inddrage den uniforme?
       sample[i,]<-c(X,Y)
       i<-i+1
     }
   }
   return(sample)
 }
+
 
 gen_asym<-function(n,rho=0){
   eps1<-rnorm(n)
@@ -43,11 +44,12 @@ y<-sample_sym$y
 knots_x_inner<-c(min(x),-2,seq(-1,1,length.out=4),2,max(x))
 knots_y_inner<-c(min(y),-2,seq(-1,1,length.out=4),2,max(y))
 
-#cross_validation<-cross_validate2d(x,y,knots_x_inner=knots_x_inner,knots_y_inner=knots_y_inner,k=2,l=2,u=1,v=1)
+cross_validation<-cross_validate2D(x,y,knots_x_inner=knots_x_inner,knots_y_inner=knots_y_inner,k=2,l=2,u=1,v=1)
+
 #plot(cross_validation)
 
 
-biv_sym<-zbSpline2D(x,y,knots_x_inner=knots_x_inner,alfa=0.9,bin_selection=c(10,10),knots_y_inner=knots_y_inner,k=3,l=3,u=1,v=1,res=100)
+biv_sym<-zbSpline2D(x,y,knots_x_inner=knots_x_inner,alfa=0.9,bin_selection=c(10,10),knots_y_inner=knots_y_inner,k=3,l=3,u=1,v=1,res=100,calc_dens=FALSE)
 trapz(biv_sym$seq_x,biv_sym$Z_spline_x)
 
 biv_sym$rsd
@@ -62,6 +64,9 @@ plot_ly(x=z_values$x,y=z_values$y,z=z_values$z,type="surface")%>%
 
 #x_vals<-seq(-5,5,length.out=100)->y_vals
 par(mfrow=c(3,2),mar=c(0,0,4,0),xpd=NA)
+
+
+#Det her kan vi lave meget bedre
 par(mfrow=c(1,1))
 x_vals<-seq(-5,5,length.out=100)->y_vals
 z_vals<-outer(x_vals,y_vals,FUN=function(x,y){logistic_bivariate(x,y,rho=0)})
@@ -111,7 +116,7 @@ norm_constant<-trapz2d(x_vals,y_vals,z_vals)
 persp3D(x=x_vals,y=y_vals,z=z_vals,col=viridis(50),ticktype="detailed",colkey=F,main=expression(rho==0))
 
 
-
+set.seed(1)
 sample_asym<-gen_asym(1000,rho=1)
 x<-sample_asym$x
 y<-sample_asym$y
@@ -129,10 +134,10 @@ ky<-seq(min(y),max(y),length.out=5)
 library(profvis)
 profvis(bivariate(x,y,knots_x_inner=kx,knots_y_inner=ky,bin_selection=scott,alfa=1,k=3,l=3,u=1,v=1,res=50))
 
-biv_asym<-bivariate(x,y,knots_x_inner=kx,knots_y_inner=ky,bin_selection=scott,alfa=1,k=3,l=3,u=1,v=1,res=50)
+biv_asym<-zbSpline2D(x,y,knots_x_inner=kx,knots_y_inner=ky,bin_selection=scott,alfa=1,k=3,l=3,u=1,v=1,res=50)
 biv_asym$rsd
 
-cv<-cross_validate2d(x,y,knots_x_inner=kx,knots_y_inner=ky,k=4,l=5,u=3,v=1)
+cv<-cross_validate2d(x,y,knots_x_inner=kx,knots_y_inner=ky,k=3,l=3,u=3,v=1)
 plot(cv)
 
 par(mfrow=c(2,3),mar=c(0,0,1,0))
@@ -140,13 +145,13 @@ jpeg("clr_full.jpeg")
 plot(biv_asym,scale="clr",what="full",type="static",plot_hist=TRUE,title="clr full")
 dev.off()
 jpeg("density_full.jpeg")
-plot(biv_asym,scale="clr",what="interaction",type="static",plot_hist=TRUE,title="clr interaction")
+plot(biv_asym,scale="clr",what="interaction",type="static",plot_hist=FALSE,title="clr interaction")
 dev.off()
 jpeg("clr_interaction.jpeg")
 plot(biv_asym,scale="clr",what="independent",type="static",plot_hist=FALSE,title="clr independent")
 dev.off()
 jpeg("density_interaction.jpeg")
-plot(biv_asym,scale="density",what="full",type="static",plot_hist=FALSE,title="density full")
+plot(biv_asym,scale="density",what="full",type="static",plot_hist=TRUE,title="density full")
 dev.off()
 jpeg("clr_independent.jpeg")
 plot(biv_asym,scale="density",what="interaction",type="static",plot_hist=FALSE,title="density interaction")
@@ -181,8 +186,11 @@ dhsic.test(x,y,method="gamma")$p.value
 ind_sim<-indepTestSim(2000,2,N=1000)
 indepTest(sample_asym,ind_sim)
 
-rho_seq<-seq(0,1,length.out=8)
-p_vals_asym<-data.frame("rho"=sort(rep(rho_seq,100)),"rsd"=NA,"spearman"=NA,"dhsic"=NA,"copula"=NA)
+rho_seq<-seq(0,1,length.out=10)
+p_vals_asym<-data.frame("rho"=sort(rep(rho_seq,100)),"rsd"=NA,"spearman"=NA,"dhsic"=NA,"copula"=NA,"chisq"=NA)
+
+#Der sker godt nok nogle mærkelige ting for at få det til at køre lidt hurtigere.
+#Vi imputerer for eksempel med en lidt hurtigere algoritme
 
 pb <- txtProgressBar(min = 0, max = nrow(p_vals_asym), style = 3)
 for(i in 1:nrow(p_vals_asym)){
@@ -193,11 +201,14 @@ for(i in 1:nrow(p_vals_asym)){
   kx<-seq(min(x),max(x),length.out=5)
   ky<-seq(min(x),max(x),length.out=5)
   #biv<-bivariate(x,x,alfa=1,bin_selection=scott,knots_x_inner=kx,knots_y_inner=kx,k=2,l=2,u=1,v=1,res=100)
-  biv<-perm_test(x,y,kx,ky,alfa=1,bin_selection=scott,k=2,l=2,u=1,v=1,res=100,K=200)
-  p_vals_asym$rsd[i]<-biv
+  biv<-perm_test(x,y,kx,ky,bin_selection=scott,k=2,l=2,u=1,v=1,K=1000)
+  hist<-biv$hist
+  
+  p_vals_asym$rsd[i]<-biv$p_val
   p_vals_asym$spearman[i]<-cor.test(x,y,method="spearman")$p.value #Simply use spearman test
   p_vals_asym$dhsic[i]<-dhsic.test(x,y,method="gamma")$p.value #Gaussian kernel with median value as bandwidth
   p_vals_asym$copula[i]<-indepTest(simulation,ind_sim)$pvalues #We use global statistic
+  p_vals_asym$chisq[i]<-chisq.test(hist)$p.value
 }
 
 saveRDS(p_vals_asym,"asymetric p-values")
@@ -243,9 +254,10 @@ ggplot(p_vals_power,aes(x=rho,color=test))+
 
 
 
-rho_seq<-seq(0,0.3,length.out=8)
+rho_seq<-seq(0,0.3,length.out=10)
 p_vals_sym<-data.frame("rho"=sort(rep(rho_seq,100)),"rsd"=NA,"spearman"=NA,"dhsic"=NA,"copula"=NA)
 pb <- txtProgressBar(min = 0, max = nrow(p_vals_sym), style = 3)
+print("CENTERED")
 for(i in 1:nrow(p_vals_sym)){
   setTxtProgressBar(pb, i)
   simulation<-gen_sym(n=2000,rho=p_vals_sym$rho[i])
@@ -254,11 +266,14 @@ for(i in 1:nrow(p_vals_sym)){
   kx<-seq(min(x),max(x),length.out=5)
   ky<-seq(min(x),max(x),length.out=5)
   #biv<-bivariate(x,x,alfa=1,bin_selection=scott,knots_x_inner=kx,knots_y_inner=kx,k=2,l=2,u=1,v=1,res=100)
-  biv<-perm_test(x,y,kx,ky,alfa=1,bin_selection=scott,k=2,l=2,u=1,v=1,res=100,K=200)
-  p_vals_sym$rsd[i]<-biv
-  p_vals_sym$spearman[i]<-cor.test(x,y,method="spearman")$p.value #Simply use spearman test
-  p_vals_sym$dhsic[i]<-dhsic.test(x,y,method="gamma")$p.value #Gaussian kernel with median value as bandwidth
-  p_vals_sym$copula[i]<-indepTest(simulation,ind_sim)$pvalues #We use global statistic
+  biv<-perm_test(x,y,kx,ky,bin_selection=scott,k=2,l=2,u=1,v=1,K=1000)
+  hist<-biv$hist
+  
+  p_vals_asym$rsd[i]<-biv$p_val
+  p_vals_asym$spearman[i]<-cor.test(x,y,method="spearman")$p.value #Simply use spearman test
+  p_vals_asym$dhsic[i]<-dhsic.test(x,y,method="gamma")$p.value #Gaussian kernel with median value as bandwidth
+  p_vals_asym$copula[i]<-indepTest(simulation,ind_sim)$pvalues #We use global statistic
+  p_vals_asym$chisq[i]<-chisq.test(hist)$p.value
 }
 
 saveRDS(p_vals_sym,"symmetric pvalues")
@@ -343,12 +358,12 @@ N<-c(30,50,100,500,1000,2000)
 run_times<-data.frame("N"=N,"rsd"=NA,"spearman"=NA,"dhsic"=NA,"copula"=NA)
 for(i in 1:length(N)){
   print(N[i])
-  samp<-mvrnorm(n=N[i],mu=c(0,0),Sigma=matrix(c(1,0,0,1),nrow=2,ncol=2))
+  samp<-gen_sym(n=N[i],rho=0.2)
   x<-samp[,1]
   y<-samp[,2]
   kx<-seq(min(x),max(x),length.out=5)
   ky<-seq(min(y),max(y),length.out=5)
-  b<-microbenchmark(perm_test(x,y,kx=kx,ky=ky),cor.test(x,y,method="spearman"),dhsic.test(x,y),indepTest(samp,indepTestSim(N[i],2,N=200)),times=1)
+  b<-microbenchmark(perm_test(x,y,kx=kx,ky=ky,K=500),cor.test(x,y,method="spearman"),dhsic.test(x,y),indepTest(samp,indepTestSim(N[i],2,N=200)),times=1)
   run_times[i,2:5]<-as.data.frame(summary(b,unit="s"))$median
 } #Do note that the hsic test is used with an asymptotic result, so for lower sample sizes we would have to use a permutation test.
 #This would make hsic slower at this stage.
@@ -389,7 +404,6 @@ pb <- txtProgressBar(min = 0, max = nrow(p_vals_samp), style = 3)
 for (i in 1:nrow(p_vals_samp)) {
   setTxtProgressBar(pb, i)
   
-  # Initialize success flag and attempt counter
   success <- FALSE
   attempt <- 0
   max_attempts <- 10  # Set a maximum number of attempts
