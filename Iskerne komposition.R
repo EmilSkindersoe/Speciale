@@ -1,5 +1,4 @@
-source("~/Universitet-mat/.Speciale/R/splines_source1.R")
-source("~/Universitet-mat/.Speciale/R/splines_bivariate.R")
+source("~/Universitet-mat/.Speciale/R/splines_combined.R")
 library(readxl)
 ice_ages<-read_excel("Rasmussen_et_al_2014_QSR_Table_2.xlsx",range = "A22:E139")[-(1:8),]
 ice_ages<-ice_ages[-(97:nrow(ice_ages)),]
@@ -155,14 +154,14 @@ fill_rsd<-function(list){
     kx<-seq(min(x),max(x),length.out=4)
     ky<-seq(min(y),max(y),length.out=4)
     cross<-tryCatch({
-      cross_validate2d(x,y,knots_x_inner=kx,knots_y_inner=ky,bin_selection=doane,k=3,l=3,u=1,v=1)},
+      cross_validate2D(x,y,knots_x_inner=kx,knots_y_inner=ky,bin_selection=doane,k=3,l=3,u=1,v=1)},
        error = function(e) {
        message("Skipping iteration ", i, " due to error: ", conditionMessage(e))
        NULL # Return NULL if there's an error
       })
     if(!is.null(cross)){
       dens <- tryCatch({
-        bivariate(x, y, alfa = cross$optimum, bin_selection = doane, knots_x_inner = kx, 
+        zbSpline2D(x, y, alfa = cross$optimum, bin_selection = doane, knots_x_inner = kx, 
                   knots_y_inner = ky, k = 3, l = 3, u = 1, v = 1)
       })
       
@@ -210,9 +209,25 @@ x<-ice_sim$d18O
 y<-ice_sim$Ca2
 kx<-seq(min(x),max(x),length.out=4)
 ky<-seq(min(y),max(y),length.out=4)
-summary(zbSpline2D(x,y,knots_x_inner=kx,knots_y_inner=ky,k=3,l=3,u=1,v=1))
+sim_fit<-(zbSpline2D(x,y,knots_x_inner=kx,alfa=0.1,knots_y_inner=ky,k=3,l=3,u=1,v=1))
+summary(sim_fit)
 p_ice<-perm_test(x,y,kx=kx,ky=ky,alfa=0.1,k=3,l=3,u=1,v=1,K=1000)
-p_ice
+
+dhsic.test(x,y)
+
+#Make a histogram from it
+hist_rsd<-hist(p_ice$rsd_perms,plot=FALSE)
+
+cross_validate1D(data.frame(hist_rsd$mids,hist_rsd$counts),knots_inner=c(min(hist_rsd$mids),0.01,0.02,0.03))
+plot_rsd<-zbSpline1D(data.frame(hist_rsd$mids,hist_rsd$counts),alfa=1,knots_inner=c(min(hist_rsd$mids),0.01,0.02,max(hist_rsd$mids)))
+plot(plot_rsd,what="Z-spline")
+
+
+hist(p_ice$rsd_perms,probability=TRUE,main="Histogram of simulated RSD statistics",xlab="RSD")
+abline(v=p_ice$rsd_true,lty=2)
+lines(plot_rsd$x_seq,exp(plot_rsd$Z_spline)/trapz(plot_rsd$x_seq,exp(plot_rsd$Z_spline)))
+
+
 
 ngrip2_mild<-do.call(rbind,ngrip2_list[seq(2,length(ngrip2_list),by=2)])
 grip_mild<-do.call(rbind,grip_list[seq(2,length(ngrip2_list),by=2)])

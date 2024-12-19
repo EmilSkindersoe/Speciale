@@ -73,15 +73,7 @@ clr <- function(f,x) { #x is used to get the range over which f is evaluated and
   }
   return(clr_function)
 }
-clr2d<-function(f,x,y){
-  f_vals<-log(outer(x,y,FUN=f)) #Evaluate at log-scale for the integral
-  int<-trapz2d(x,y,f_vals)
-  area <- (max(x) - min(x)) * (max(y) - min(y))
-  clr2_function<-function(x,y){
-    log(f(x,y))-int/area #Creates a function for the clr-transform
-  }
-  return(clr2_function)
-}
+
 
 czm<-function(x){ #Impute 0-entries of 1-D histogram x
   if(any(x<0)){
@@ -94,51 +86,56 @@ czm<-function(x){ #Impute 0-entries of 1-D histogram x
   }
   return(x/sum(x))
 } #Impute 1-D histogram x
+
+
+#We interpret neightbours as the directly adjacent cells because it is much faster computationally
 get_neighbors <- function(mat, i, j) {
+  offsets <- c(-1, 0, 1)
+  neighbors <- numeric(0)
   n_row <- nrow(mat)
   n_col <- ncol(mat)
   
-  # Define the range for neighboring indices
-  row_range <- (i-1):(i+1)
-  col_range <- (j-1):(j+1)
-  
-  # Keep indices within matrix bounds
-  row_indices <- row_range[row_range >= 1 & row_range <= n_row]
-  col_indices <- col_range[col_range >= 1 & col_range <= n_col]
-  
-  # Create all combinations of neighboring positions
-  neighbor_positions <- expand.grid(row = row_indices, col = col_indices)
-  
-  # Exclude the cell itself
-  neighbor_positions <- neighbor_positions[!(neighbor_positions$row == i & neighbor_positions$col == j), ]
-  
-  # Retrieve the values of the neighboring cells
-  neighbor_values <- mapply(function(x, y) mat[x, y], neighbor_positions$row, neighbor_positions$col)
-  return(neighbor_values)
-} #get neighbours of index i,j in a matrix
-impute_zeros <- function(counts) {
-  counts <- as.matrix(counts)
-  # Continue the process until there are no zeros left
-  while(any(counts == 0)) {
-    counts_new <- counts
-    zero_positions <- which(counts == 0, arr.ind = TRUE)
-    # Iterate over each zero entry
-    for(k in 1:nrow(zero_positions)) {
-      i <- zero_positions[k, 1]
-      j <- zero_positions[k, 2]
-      neighbor_values <- get_neighbors(counts, i, j)
-      non_zero_neighbors <- neighbor_values[neighbor_values > 0]
-      
-      # If there are non-zero neighbors, compute the geometric mean
-      if(length(non_zero_neighbors) > 0) {
-        gm <- exp(mean(log(non_zero_neighbors)))*2/3
-        counts_new[i, j] <- gm
+  for (dx in offsets) {
+    for (dy in offsets) {
+      if (dx == 0 && dy == 0) next  # skip the cell itself
+      x <- i + dx
+      y <- j + dy
+      if (x >= 1 && x <= n_row && y >= 1 && y <= n_col) {
+        neighbors <- c(neighbors, mat[x, y])
       }
     }
-    counts <- counts_new
   }
-  return(counts)
-} #Impute the 0-entries of a 2-D histogram counts
+  neighbors
+}
+
+impute_zeros <- function(counts) {
+  counts <- as.matrix(counts)
+  repeat {
+    zero_positions <- which(counts == 0, arr.ind = TRUE)
+    if (nrow(zero_positions) == 0) break
+    
+    changed <- FALSE
+    for (k in seq_len(nrow(zero_positions))) {
+      i <- zero_positions[k, 1]
+      j <- zero_positions[k, 2]
+      # Double-check it's still zero (may have been imputed this iteration)
+      if (counts[i, j] == 0) {
+        neighbor_values <- get_neighbors(counts, i, j)
+        non_zero_neighbors <- neighbor_values[neighbor_values > 0]
+        if (length(non_zero_neighbors) > 0) {
+          gm <- exp(mean(log(non_zero_neighbors))) * 2/3
+          counts[i, j] <- gm
+          changed <- TRUE
+        }
+      }
+    }
+    # If no zeros changed, we're done
+    if (!changed) break
+  }
+  counts
+}
+
+
 
 zbSpline1D<-function(x,alfa=0.5,l=2,k=3,bin_selection=doane,knots_inner=NULL,res=1000){ #Kan udvides til at have støj med i form af weights
   #x is a vector of observations or a dataframe. If it is a dataframe, the bin_points are in the first column and bin_values are in the second
@@ -171,8 +168,7 @@ zbSpline1D<-function(x,alfa=0.5,l=2,k=3,bin_selection=doane,knots_inner=NULL,res
       print("Some bins had 0 values, imputing by czm. The imputed bins are:")  # Ensure the warning is displayed before the print
       print(x[which(x[,2]==0),1])
       bins_new<-czm(x[,2])
-    }
-    bins_new<-x[,2]
+    } else{bins_new<-x[,2]}
   } else stop("Error: x must be numeric or data frame")
   
   
@@ -260,8 +256,13 @@ zbSpline1D<-function(x,alfa=0.5,l=2,k=3,bin_selection=doane,knots_inner=NULL,res
   H<- alfa*B%*%U%*%G_inv%*%t(U)%*%t(B)
   
   #And we convert all of it back to probability scale
+  
+  
   zeta<-exp(Z) #We transform the basis
   #Normalising basis splines may give numerical instability
+  #Having the basis on a small domain is also problematic..
+  #Perhaps the clr-space is not properly scaled, but it does not seem so
+  #Yet this zeta matrix can become numerically unstable
  
   
   terms=matrix(NA,nrow=nrow(zeta),ncol=ncol(zeta))
@@ -336,7 +337,7 @@ zbSpline2D<-function(x,y=NULL,knots_x_inner,knots_y_inner,alfa=0.5,rho=NULL,bin_
     
     #Impute the counts
     
-      hist_data<-impute_zeros(counts)
+    hist_data<-impute_zeros(counts)
     
     F_mat<-CLR(hist_data)
   }else {stop("Error: Data must be either histogram data x or numerics (x,y).")}
@@ -585,13 +586,13 @@ summary.zbSpline2D <- function(Z) {
   cat("Spline evaluated over the intervals x in (", min(Z$seq_x), ",", max(Z$seq_x), 
       ") and y in (", min(Z$seq_y), ",", max(Z$seq_y), ")\n")
   cat("RSD:", Z$rsd, "\n")
-  cat("Arg max:", Z$seq_x[Z$spline_max[1]],Z$seq_x[Z$spline_max[2]], "\n")
+  cat("Arg max:", Z$seq_x[Z$spline_max[1]],Z$seq_y[Z$spline_max[2]], "\n")
 }
 
 cross_validate1D <- function(x, alfa_seq = seq(0.01, 1, length.out = 30), k = 3, l = 2, knots_inner = NULL) {
   cv <- numeric(length = length(alfa_seq))
   for(i in seq_along(cv)) {
-    Z <- zbSpline(x, alfa = alfa_seq[i], k = k, l = l, knots_inner = knots_inner)
+    Z <- zbSpline1D(x, alfa = alfa_seq[i], k = k, l = l, knots_inner = knots_inner)
     y <- CLR(Z$bin_values)
     n <- length(y)
     B <- splineDesign(Z$knots, Z$bin_points, ord = Z$degree + 1, outer.ok = TRUE) # Using U and spline design to evaluate the basis

@@ -29,8 +29,12 @@ c<-cross_validate2D(x,y,alfa_seq=seq(0.0001,0.0008,length.out=10),bin_selection=
 plot(c)
 c$optimum
 
-m=microbenchmark(zbSpline2D(x,y,alfa=0.0006,knots_x_inner=kx,knots_y_inner=ky,k=3,l=3,u=2,v=2),kde2d(x,y,n=100),times=10)
-autoplot(m)
+#We use the perm_test on this
+rsd_test<-perm_test(x,y,kx,ky,k=3,l=3,u=2,v=2)
+hist_rsd<-hist(rsd_test$rsd_perms,plot=FALSE)
+plot_rsd<-zbSpline1D(data.frame(hist_rsd$mids,hist_rsd$density),knots_inner=c(min(hist_rsd$mids),0.04,0.05,0.06,max(hist_rsd$mids)),alfa=1)
+hist(rsd_test$rsd_perms,probability=TRUE,ylim=c(0,47),main="Histogram of simulated RSD values",xlab="RSD")
+lines(plot_rsd$x_seq,plot_rsd$C_spline)
 
 test<-zbSpline2D(x,y,alfa=0.0006,knots_x_inner=kx,knots_y_inner=ky,k=3,l=3,u=2,v=2)
 
@@ -346,8 +350,9 @@ plot(x_seq,log(colSums(spline_test$C_spline)))
 #Make another function which takes as input a list of splines and returns the permuted splines.
 
 #Since we evaluate on the same domain for all functions, these are saved globally.
-x_seq<-list_splines[[1]]$seq_x
-y_seq<-list_splines[[1]]$seq_y
+
+x_seq<-list_of_splines[[1]]$seq_x
+y_seq<-list_of_splines[[1]]$seq_y
 norm_cons_x<-(x_range[2]-x_range[1])
 norm_cons_y<-(y_range[2]-y_range[1])
 
@@ -394,16 +399,20 @@ for(i in 1:K){
   perm_new<-perm_spline(list_of_splines)
   T_new[i]<-calc_test(perm_new)
 }
+saveRDS(T_new,"T_stats")
 p<-length(which(T_new>=T_obs))/K
 ggplot()+
   geom_histogram(data=data.frame("T"=T_new),mapping=aes(x=T),bins=doane(T_new),fill="gray",color="black")+
   theme_minimal()
 
-hist_T<-hist(T_new,plot=FALSE)
+hist_T<-hist(T_new,plot=FALSE,breaks=8)
+plot(hist_T)
 
+cross_validate1D(data.frame(hist_T$mids,hist_T$counts))
 plot_T<-zbSpline1D(data.frame(hist_T$mids,hist_T$counts))
+plot(plot_T,what="C-spline")
 
-hist(T_new,xlim=c(min(hist_T$breaks),T_obs+1),probability=T,main="Histogram of simulated T statistics",xlab="T")
+hist(T_new,xlim=c(min(hist_T$breaks),T_obs+1),probability=T,ylim=c(0,0.3),main="Histogram of simulated T statistics",xlab="T")
 abline(v=T_obs,lty=2)
 lines(plot_T$x_seq,plot_T$C_spline)
 
